@@ -1,13 +1,14 @@
 # fscrypt-multiuser
 Linux filesystem encryption utilities for managing shared resources in multiuser environments.
 
-## Purpose
+**This project is a work-in-progress. Until properly released, bugs are likely and backwards compatibility is certain to break.**
 
+## Purpose
 In brief, this is a tool for IT automation in shared lab environments where you wish to encrypt data at rest, but also need to allow an arbitrary number of authorized users to access that data on-demand.
 
-Similar projects like https://github.com/google/fscrypt are generally designed with the assumption that encrypted resources belong to a particular user and that these resources are exclusive to that user. While it is possible in google/fscrypt to add multiple protectors to a single policy (and thus, assign protectors to multiple users), doing so is cumbersome and difficult to automate.
+Similar projects like [google/fscrypt](https://github.com/google/fscrypt) are generally designed with the assumption that encrypted resources belong to a particular user and that these resources are exclusive to that user. While it is possible in google/fscrypt to add multiple protectors to a single policy (and thus, assign protectors to multiple users), doing so is cumbersome and difficult to automate.
 
-https://github.com/google/fscryptctl is a similar project which provides more direct access to linux's filesystem encryption API, but again does not implement multiple-wrapping of the encryption key which makes it unsuitable for multiuser systems.
+[google/fscryptctl](https://github.com/google/fscryptctl) is a related project which provides more direct access to linux's filesystem encryption API, but again does not implement multiple-wrapping of the encryption key so it's useless in this application.
 
 LUKS for full disk encryption is unsuitable for this environment because they require physical access to the system during reboots, which may be difficult in a remote-work environment. It also allows for only 8 key slots (or 32 for LUKS2), which is too few for this use-case.
 
@@ -18,15 +19,17 @@ This project attempts to address these issues like so:
 - KEKs are generated from a secure hash of the user's login password. This allows IT administrators to set up encryption keys across multiple devices without needing to store or distribute the user's original password.
 
 ## Dependencies
-This project requires the libpam development headers.
+This project requires the PAM and openssl development headers.
 
 For ubuntu:
 ```
-sudo apt install libpam0g-dev
+sudo apt install libpam0g-dev libssl-dev
 ```
 
-## Build and install pam module
+## Build and Install
 ```
 make all
 sudo make install
 ```
+
+After installation, the unix password integration will be enabled by default. It can be disabled by running `sudo pam-auth-update` and de-selecting this module.

@@ -1,0 +1,9 @@
+Name: Multiuser fscrypt integration
+Default: yes
+Priority: 128
+Auth-Type: Additional
+Auth-Final:
+	optional	pam_fscrypt_multiuser.so
+Password-Type: Additional
+Password-Final:
+	optional	pam_fscrypt_multiuser.so
