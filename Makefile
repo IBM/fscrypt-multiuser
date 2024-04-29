@@ -12,7 +12,6 @@ PREFIX?=/usr
 INCLUDEDIR?=$(PREFIX)/include
 LIBDIR?=$(PREFIX)/lib
 BINDIR?=$(PREFIX)/bin
-# PAMDIR?=$(LIBDIR)/x86_64-linux-gnu/security
 PAMDIR?=$(LIBDIR)/security
 
 ifeq ($(BUILD_TYPE), Debug)

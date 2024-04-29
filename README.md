@@ -20,6 +20,8 @@ This project attempts to address these issues like so:
 
 ## Usage
 
+TODO
+
 ### Logging
 
 All logs are sent to syslog (`/var/log/syslog`) with ID `fscrypt_multiuser`.
@@ -40,7 +42,7 @@ make all
 sudo make install
 ```
 
-After installation, the unix password integration will be enabled by default. It can be disabled by running `sudo pam-auth-update` and de-selecting this module.
+For Ubuntu, the unix password integration will be enabled by default after installation. It can be disabled by running `sudo pam-auth-update` and de-selecting this module.
 
 ### Build Options
 
@@ -48,7 +50,20 @@ The following options can be passed to `make`.
 
 | Option | Description |
 | - | - |
-| DESTDIR | |
+| DESTDIR | Install module into a fakeroot |
+| BUILD_DIR | Configure temporary build directory |
+| CC | Set C compiler |
+| EXTRA_CFLAGS | C compiler flags |
+| EXTRA_LDFLAGS | C linker flags |
+| BUILD_TYPE | "Debug" or "Release" build type |
+| DO_PAM_RULE_UPDATE | Y/N to enable/disable installing rule for ubuntu's pam-configs |
+| DO_PAM_AUTH_UPDATE | Y/N to run pam-auth-update during installation |
+| - | - |
+| PREFIX | Default: `/usr` |
+| INCLUDEDIR | Default: `$PREFIX/include` |
+| LIBDIR | Default: `$PREFIX/lib` |
+| BINDIR | Default: `$PREFIX/bin` |
+| PAMDIR | Default: `$LIBDIR/security` |
 
 
 ## PAM Module Hooks
