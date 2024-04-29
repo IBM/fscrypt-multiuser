@@ -22,7 +22,6 @@ limitations under the License.
 #include "constants.h"
 #include "hasher.h"
 
-
 struct crypto_context_t {
     uint8_t unlock_key[FSCRYPT_USER_KEK_BYTES];
     uint8_t iv[FSCRYPT_USER_KEK_BYTES];
@@ -39,15 +38,24 @@ enum wrap_key_mode_t {
     KEY_MODE_APPEND_USER,
 };
 
+enum fscrypt_utils_status_t {
+    FSCRYPT_UTILS_STATUS_OK = 0,
+    FSCRYPT_UTILS_STATUS_ERROR = 1
+};
+
 char *fscrypt_util_stored_data_path();
+
+enum fscrypt_utils_status_t fscrypt_utils_string_to_bytes(unsigned char *outbuf, char *hash_string);
+// Result must be free()'d when done
+char* fscrypt_utils_bytes_to_string(unsigned char *inbuf, size_t insize);
 
 void fscrypt_utils_log(int priority, const char *fmt, ...);
 void fscrypt_utils_set_log_stderr(int is_stderr_enabled);
+void fscrypt_utils_set_log_min_priority(int min_priority);
 
-// Returns 0 on success, 1 on failure
-int wrap_fscrypt_key(struct user_key_data_t *known_user, struct user_key_data_t *new_user, enum wrap_key_mode_t mode);
-int fscrypt_add_key(uint8_t fscrypt_key_id_out[FSCRYPT_KEY_ID_BYTES], const char *mountpoint, struct user_key_data_t *known_user);
-int fscrypt_set_policy(const char *mountpoint, const char *directory, struct user_key_data_t *known_user);
+enum fscrypt_utils_status_t wrap_fscrypt_key(struct user_key_data_t *known_user, struct user_key_data_t *new_user, enum wrap_key_mode_t mode);
+enum fscrypt_utils_status_t fscrypt_add_key(uint8_t fscrypt_key_id_out[FSCRYPT_KEY_ID_BYTES], const char *mountpoint, struct user_key_data_t *known_user);
+enum fscrypt_utils_status_t fscrypt_set_policy(const char *mountpoint, const char *directory, struct user_key_data_t *known_user);
 
 // Returns number of bytes in keyout
 size_t fscrypt_utils_generate_random_key(uint8_t *keyout, size_t size);

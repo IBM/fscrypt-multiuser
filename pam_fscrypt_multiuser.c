@@ -22,19 +22,55 @@ limitations under the License.
 #include <stdarg.h>
 #include <string.h>
 #include <syslog.h>
+#include <stdlib.h>
+#include <dlfcn.h>
 
 #include "fscrypt_utils.h"
+#include "fscrypt_pam_hook.h"
 
 
 int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
     fscrypt_utils_set_log_stderr(0);
+#ifdef DEBUG_BUILD
+    fscrypt_utils_set_log_min_priority(6);  // LOG_INFO
+#else
+    fscrypt_utils_set_log_min_priority(4);  // LOG_WARNING
+#endif
+
+    const char *post_hook = NULL;
+    for (int idx = 0; idx < argc; idx++)
+    {
+        fscrypt_utils_log(LOG_DEBUG, "argv[%d] = %s\n", idx, argv[idx]);
+        const char *value = strchr(argv[idx], '=');
+        if (value == NULL)
+        {
+            continue;
+        }
+        value++;
+        if (argv[idx] == strstr(argv[idx], "post-hook="))
+        {
+            post_hook = value;
+            fscrypt_utils_log(LOG_NOTICE, "Using post-hook module %s\n", post_hook);
+        }
+        else if (argv[idx] == strstr(argv[idx], "loglevel="))
+        {
+            int loglevel = atoi(value);
+            fscrypt_utils_set_log_min_priority(loglevel);
+            fscrypt_utils_log(LOG_NOTICE, "syslog level set to %d\n", loglevel);
+        }
+        else
+        {
+            fscrypt_utils_log(LOG_WARNING, "unknown parameter %s\n", argv[idx]);
+        }
+    }
 
     char *service;
     pam_get_item(pamh, PAM_SERVICE, (const void**)&service);
     if (service != NULL && 0 == strcmp(service, "sudo"))
     {
         // No need to unlock if this was just a sudo request
+        fscrypt_utils_log(LOG_NOTICE, "skipping unlock for service %s\n", service);
         return PAM_IGNORE;
     }
 
@@ -42,14 +78,15 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
     pam_get_item(pamh, PAM_USER, (const void**)&username);
     if (username == NULL)
     {
-        fscrypt_utils_log(LOG_ERR, "pam_fscrypt_multiuser: pam_sm_authenticate failed to get username\n");
+        fscrypt_utils_log(LOG_ERR, "pam_sm_authenticate failed to get username\n");
+        return PAM_IGNORE;
     }
 
     char *password;
     pam_get_item(pamh, PAM_AUTHTOK, (const void**)&password);
     if (password == NULL)
     {
-        fscrypt_utils_log(LOG_ERR, "pam_fscrypt_multiuser: pam_sm_authenticate failed to get password\n");
+        fscrypt_utils_log(LOG_ERR, "pam_sm_authenticate failed to get password\n");
         return PAM_IGNORE;
     }
 
@@ -58,15 +95,44 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
     fscrypt_utils_hash_password(userdata.user_kek, username, password);
     strcpy(userdata.username, username);
 
-    if (0 != fscrypt_add_key(NULL, "/", &userdata))
+    enum fscrypt_utils_status_t rc_add_key = fscrypt_add_key(NULL, "/", &userdata);
+    if (rc_add_key != FSCRYPT_UTILS_STATUS_OK)
     {
-        fscrypt_utils_log(LOG_ERR, "pam_fscrypt_multiuser: Failed to unlock fscrypt key for user '%s'\n", username);
+        fscrypt_utils_log(LOG_ERR, "Failed to unlock fscrypt key for user '%s'\n", username);
     }
     else
     {
-        fscrypt_utils_log(LOG_WARNING, "pam_fscrypt_multiuser: Successfully unlocked key for user '%s'\n", username);
+        fscrypt_utils_log(LOG_NOTICE, "Successfully unlocked key for user '%s'\n", username);
     }
 
+    if (post_hook != NULL)
+    {
+        void *handle = dlopen(post_hook, RTLD_NOW);
+        if (handle == NULL)
+        {
+            fscrypt_utils_log(LOG_ERR, "%s\n", dlerror());
+        }
+        else
+        {
+            fscrypt_multiuser_hook_v1_f hook_function = (fscrypt_multiuser_hook_v1_f)dlsym(handle, "fscrypt_multiuser_hook_v1");
+            if (hook_function == NULL)
+            {
+                fscrypt_utils_log(LOG_ERR, "%s\n", dlerror());
+            }
+            else
+            {
+                // v1 hook
+                struct hook_data_structure_t hook_params;
+                hook_params.unlock_ok = (rc_add_key == FSCRYPT_UTILS_STATUS_OK);
+                hook_params.username = username;
+                hook_params.password = password;
+                hook_params.user_kek_data = userdata.user_kek;
+                hook_params.user_kek_bytes = FSCRYPT_USER_KEK_BYTES;
+                hook_function(&hook_params);
+            }
+            dlclose(handle);
+        }
+    }
     memset(&userdata, 0, sizeof(userdata));
 
     return PAM_IGNORE;
@@ -106,7 +172,7 @@ int pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv)
     strcpy(userdata_new.username, username);
 
     int rc;
-    if (0 != wrap_fscrypt_key(&userdata_old, &userdata_new, KEY_MODE_REPLACE_USER))
+    if (FSCRYPT_UTILS_STATUS_OK != wrap_fscrypt_key(&userdata_old, &userdata_new, KEY_MODE_REPLACE_USER))
     {
         fscrypt_utils_log(LOG_ERR, "pam_fscrypt_multiuser: failed to rewrap user key during password change for %s\n", username);
         rc = PAM_IGNORE;

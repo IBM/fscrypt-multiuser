@@ -31,21 +31,15 @@ enum actions_t {
     ACTION_ENCRYPT,
 };
 
-void string_to_bytes(unsigned char *outbuf, char *hash_string)
-{
-    for (size_t idx = 0; idx < strlen(hash_string); idx += 2)
-    {
-        char nextdata[3] = "\0";
-        memcpy(nextdata, &hash_string[idx], 2);
-        nextdata[2] = '\0';
-        long next_byte = strtol(nextdata, NULL, 16);
-        outbuf[idx / 2] = next_byte & 0xff;
-    }
-}
 
 int main(int argc, char **argv)
 {
     fscrypt_utils_set_log_stderr(1);
+#ifdef DEBUG_BUILD
+    fscrypt_utils_set_log_min_priority(7);  // LOG_DEBUG
+#else
+    fscrypt_utils_set_log_min_priority(4);  // LOG_WARNING
+#endif
 
     enum actions_t action = ACTION_INVALID;
 
@@ -95,7 +89,13 @@ int main(int argc, char **argv)
     memset(&userdata_b, 0, sizeof(userdata_b));
     char *encrypt_dir = NULL;
     strcpy(userdata_a.username, argv[2]);
-    string_to_bytes(userdata_a.user_kek, argv[3]);
+    enum fscrypt_utils_status_t convert_rc;
+    convert_rc = fscrypt_utils_string_to_bytes(userdata_a.user_kek, argv[3]);
+    if (convert_rc != FSCRYPT_UTILS_STATUS_OK)
+    {
+        fprintf(stderr, "Failed to convert argument to bytes: %s\n", argv[3]);
+        return 1;
+    }
 
     if (action == ACTION_INIT_WITH_REWRAP || action == ACTION_ADD_KEY)
     {
@@ -105,7 +105,12 @@ int main(int argc, char **argv)
             return 1;
         }
         strcpy(userdata_b.username, argv[4]);
-        string_to_bytes(userdata_b.user_kek, argv[5]);
+        convert_rc = fscrypt_utils_string_to_bytes(userdata_b.user_kek, argv[5]);
+        if (convert_rc != FSCRYPT_UTILS_STATUS_OK)
+        {
+            fprintf(stderr, "Failed to convert argument to bytes: %s\n", argv[5]);
+            return 1;
+        }
     }
     if (action == ACTION_ENCRYPT)
     {
@@ -113,7 +118,7 @@ int main(int argc, char **argv)
     }
 
 
-    int rc = 1;
+    enum fscrypt_utils_status_t rc = FSCRYPT_UTILS_STATUS_ERROR;
     switch(action)
     {
         case ACTION_INIT_NEW_KEY:
@@ -169,5 +174,5 @@ int main(int argc, char **argv)
     memset(&userdata_a, 0, sizeof(userdata_a));
     memset(&userdata_b, 0, sizeof(userdata_b));
 
-    return rc;
+    return (rc != FSCRYPT_UTILS_STATUS_OK);
 }

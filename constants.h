@@ -24,7 +24,7 @@ limitations under the License.
 
 #define MAX_USERNAME_BYTES (32)
 
-#define FSCRYPT_UTILS_SYSLOG_ID "pam_fscrypt_multiuser"
+#define FSCRYPT_UTILS_SYSLOG_ID "fscrypt_multiuser"
 
 #define FSCRYPT_DEFAULT_DATA_PATH "/.fscrypt_multiuser_data"
 #define FSCRYPT_SET_DATA_PATH_ENVVAR "FSCRYPT_MULTIUSER_DATA_PATH"

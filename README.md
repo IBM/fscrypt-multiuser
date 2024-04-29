@@ -18,6 +18,14 @@ This project attempts to address these issues like so:
 - The key database is designed from the start to allow decryption of the filesystem's primary key by any number of users.
 - KEKs are generated from a secure hash of the user's login password. This allows IT administrators to set up encryption keys across multiple devices without needing to store or distribute the user's original password.
 
+## Usage
+
+### Logging
+
+All logs are sent to syslog (`/var/log/syslog`) with ID `fscrypt_multiuser`.
+
+PAM module logging can be adjusted by adding the `loglevel=` parameter to the PAM configuration in `/usr/share/pam-configs` or `/etc/pam.d`. The minimum is `loglevel=0`, to disable logging. The maximum is `loglevel=7` to enable debug trace logging.
+
 ## Dependencies
 This project requires the PAM and openssl development headers.
 
@@ -33,3 +41,18 @@ sudo make install
 ```
 
 After installation, the unix password integration will be enabled by default. It can be disabled by running `sudo pam-auth-update` and de-selecting this module.
+
+### Build Options
+
+The following options can be passed to `make`.
+
+| Option | Description |
+| - | - |
+| DESTDIR | |
+
+
+## PAM Module Hooks
+
+PAM can load and execute a hook following a user's successful login. Module hooks are shared objects implementing the API specified by [fscrypt_pam_hook.h](fscrypt_pam_hook.h). The goal of this implementation is to provide a method for administrators to dynamically reconfigure security parameters when a user successfully authenticates but they password is unable to unlock local system resources.
+
+An example module is provided at [fscrypt_pam_example_hook.c](fscrypt_pam_example_hook.c).

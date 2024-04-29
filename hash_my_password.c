@@ -25,16 +25,19 @@ limitations under the License.
 #define PW_MAX_LENGTH 128
 
 
-void get_password(char *prompt, char *result)
+void get_password(const char *prompt, char *result, int hide_input)
 {
     printf("%s", prompt);
 
     struct termios oldterm;
-    tcgetattr(STDIN_FILENO, &oldterm);
-    struct termios newterm;
-    newterm = oldterm;
-    newterm.c_lflag &= ~(ECHO);
-    tcsetattr(STDIN_FILENO, TCSANOW, &newterm);
+    if (hide_input)
+    {
+        tcgetattr(STDIN_FILENO, &oldterm);
+        struct termios newterm;
+        newterm = oldterm;
+        newterm.c_lflag &= ~(ECHO);
+        tcsetattr(STDIN_FILENO, TCSANOW, &newterm);
+    }
 
     int next_ch;
     size_t pw_idx = 0;
@@ -44,8 +47,11 @@ void get_password(char *prompt, char *result)
         pw_idx++;
     }
     result[pw_idx] = '\0';
-    tcsetattr(STDIN_FILENO, TCSANOW, &oldterm);
-    printf("\n");
+    if (hide_input)
+    {
+        tcsetattr(STDIN_FILENO, TCSANOW, &oldterm);
+        printf("\n");
+    }
 }
 
 int main(int argc, char **argv)
@@ -53,8 +59,8 @@ int main(int argc, char **argv)
     char user1[PW_MAX_LENGTH];
     char pw1[PW_MAX_LENGTH];
 
-    get_password("Username: ", user1);
-    get_password("Password: ", pw1);
+    get_password("Username: ", user1, 0);
+    get_password("Password: ", pw1, 1);
 
     unsigned char key[FSCRYPT_USER_KEK_BYTES] = "";
     fscrypt_utils_hash_password(key, user1, pw1);
@@ -70,8 +76,8 @@ int main(int argc, char **argv)
         strcat(result_escapes, hexbyte);
     }
 
-    printf("ASCII: %s\n", result_ascii);
-    printf("Escaped binary: %s\n", result_escapes);
+    printf("hash_ascii=%s\n", result_ascii);
+    printf("hash_escaped=%s\n", result_escapes);
 
     return 0;
 }
