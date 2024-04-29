@@ -68,6 +68,6 @@ The following options can be passed to `make`.
 
 ## PAM Module Hooks
 
-PAM can load and execute a hook following a user's successful login. Module hooks are shared objects implementing the API specified by [fscrypt_pam_hook.h](fscrypt_pam_hook.h). The goal of this implementation is to provide a method for administrators to dynamically reconfigure security parameters when a user successfully authenticates but they password is unable to unlock local system resources.
+PAM can load and execute a hook following a user's successful login. Module hooks are shared objects implementing the API specified by [fscrypt_pam_hook.h](inc/fscrypt_pam_hook.h). The goal of this implementation is to provide a method for administrators to dynamically reconfigure security parameters when a user successfully authenticates but they password is unable to unlock local system resources.
 
-An example module is provided at [fscrypt_pam_example_hook.c](fscrypt_pam_example_hook.c).
+An example module is provided at [fscrypt_pam_example_hook.c](src/fscrypt_pam_example_hook.c).
