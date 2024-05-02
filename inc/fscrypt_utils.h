@@ -55,7 +55,7 @@ void fscrypt_utils_set_log_min_priority(int min_priority);
 
 enum fscrypt_utils_status_t wrap_fscrypt_key(struct user_key_data_t *known_user, struct user_key_data_t *new_user, enum wrap_key_mode_t mode);
 enum fscrypt_utils_status_t fscrypt_add_key(uint8_t fscrypt_key_id_out[FSCRYPT_KEY_ID_BYTES], const char *mountpoint, struct user_key_data_t *known_user);
-enum fscrypt_utils_status_t fscrypt_set_policy(const char *mountpoint, const char *directory, struct user_key_data_t *known_user);
+enum fscrypt_utils_status_t fscrypt_set_policy(const char *directory, struct user_key_data_t *known_user);
 
 // Returns number of bytes in keyout
 size_t fscrypt_utils_generate_random_key(uint8_t *keyout, size_t size);

@@ -626,11 +626,12 @@ enum fscrypt_utils_status_t fscrypt_add_key(uint8_t fscrypt_key_id_out[FSCRYPT_K
     EXIT_FUNCTION(); return func_return_code;
 }
 
-enum fscrypt_utils_status_t fscrypt_set_policy(const char *mountpoint, const char *directory, struct user_key_data_t *known_user)
+enum fscrypt_utils_status_t fscrypt_set_policy(const char *directory, struct user_key_data_t *known_user)
 {
     ENTER_FUNCTION();
     uint8_t key_id[FSCRYPT_KEY_ID_BYTES] = {0};
-    if (FSCRYPT_UTILS_STATUS_OK != fscrypt_add_key(key_id, mountpoint, known_user))
+    // Adding the encryption to to the mountpoint is 'recommended' but not required
+    if (FSCRYPT_UTILS_STATUS_OK != fscrypt_add_key(key_id, directory, known_user))
     {
         EXIT_FUNCTION(); return FSCRYPT_UTILS_STATUS_ERROR;
     }

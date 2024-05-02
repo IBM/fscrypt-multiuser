@@ -154,11 +154,11 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
         if (FSCRYPT_UTILS_STATUS_OK != fscrypt_add_key(NULL, system_mountpoints[mount_idx], &userdata))
         {
             rc_add_key = FSCRYPT_UTILS_STATUS_ERROR;
-            fscrypt_utils_log(LOG_ERR, "Failed to add fscrypt key for user '%s'\n", username);
+            fscrypt_utils_log(LOG_ERR, "Failed to add fscrypt key for user=%s mount=%s\n", username, system_mountpoints[mount_idx]);
         }
         else
         {
-            fscrypt_utils_log(LOG_NOTICE, "Successfully added key for user '%s'\n", username);
+            fscrypt_utils_log(LOG_NOTICE, "Successfully added key for user=%s mount=%s\n", username, system_mountpoints[mount_idx]);
         }
     }
 

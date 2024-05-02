@@ -22,6 +22,10 @@ This project attempts to address these issues like so:
 
 TODO
 
+### Verifying Encryption Policies
+
+The only encryption ioctls implemented in this project are those strictly required to perform encryption setup and unlock. Verification of encryption policies is outside of that scope, so it's expected that https://github.com/google/fscryptctl can be used for additional operations such as checking directories for existing policies, checking if a mount point has a key added, etc.
+
 ### Logging
 
 All logs are sent to syslog (`/var/log/syslog`) with ID `fscrypt_multiuser`.

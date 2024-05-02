@@ -36,11 +36,13 @@ enum actions_t {
 int main(int argc, char **argv)
 {
     fscrypt_utils_set_log_stderr(1);
-#ifdef DEBUG_BUILD
-    fscrypt_utils_set_log_min_priority(7);  // LOG_DEBUG
-#else
     fscrypt_utils_set_log_min_priority(4);  // LOG_WARNING
-#endif
+
+    char *env_verbose = getenv("VERBOSE");
+    if (env_verbose != NULL && env_verbose[0] != '\0')
+    {
+        fscrypt_utils_set_log_min_priority(7);
+    }
 
     enum actions_t action = ACTION_INVALID;
 
@@ -50,7 +52,7 @@ int main(int argc, char **argv)
     else if (0 == strcmp("change_key", argv[1]) && argc == 6) { action = ACTION_REWRAP_ONE;}
     else if (0 == strcmp("add_key", argv[1]) && argc == 6) { action = ACTION_ADD_KEY;}
     else if (0 == strcmp("encrypt", argv[1]) && argc == 5) { action = ACTION_ENCRYPT;}
-    else if (0 == strcmp("unlock", argv[1]) && argc == 4) { action = ACTION_UNLOCK;}
+    else if (0 == strcmp("unlock", argv[1]) && argc == 5) { action = ACTION_UNLOCK;}
 
     if (action == ACTION_INVALID) {
         fprintf(stderr,
@@ -69,12 +71,14 @@ int main(int argc, char **argv)
             "    Append a new user by rewrapping an existing user's key.\n"
             "fscrypt_setup encrypt [known_user] [known_hash] [directory]\n"
             "    Encrypt the specified directory. This directory must be empty.\n"
-            "fscrypt_setup unlock [known_user] [known_hash]\n"
-            "    Unlock the specified user's key.\n"
+            "fscrypt_setup unlock [known_user] [known_hash] [mount_point]\n"
+            "    Unlock the specified user's key for all encrypted directories under mount_point\n"
             "\n"
             "DATABASE FILE:\n"
             "    To configure the database file, set the environment variable " FSCRYPT_SET_DATA_PATH_ENVVAR "\n"
             "    Default value: " FSCRYPT_DEFAULT_DATA_PATH "\n"
+            "VERBOSE LOGGING:\n"
+            "    To enable verbose logging, set the VERBOSE environment variable to any non-empty string\n"
         );
         return 1;
     }
@@ -89,7 +93,7 @@ int main(int argc, char **argv)
     struct user_key_data_t userdata_b;
     memset(&userdata_a, 0, sizeof(userdata_a));
     memset(&userdata_b, 0, sizeof(userdata_b));
-    char *encrypt_dir = NULL;
+    char *target_directory = NULL;
     strcpy(userdata_a.username, argv[2]);
     enum fscrypt_utils_status_t convert_rc;
     convert_rc = fscrypt_utils_string_to_bytes(userdata_a.user_kek, argv[3]);
@@ -114,9 +118,9 @@ int main(int argc, char **argv)
             return 1;
         }
     }
-    if (action == ACTION_ENCRYPT)
+    if (action == ACTION_ENCRYPT || action == ACTION_UNLOCK)
     {
-        encrypt_dir = argv[4];
+        target_directory = argv[4];
     }
 
 
@@ -156,7 +160,7 @@ int main(int argc, char **argv)
         case ACTION_UNLOCK:
         {
             uint8_t key_id[FSCRYPT_KEY_ID_BYTES] = {0};
-            rc = fscrypt_add_key(key_id, "/", &userdata_a);
+            rc = fscrypt_add_key(key_id, target_directory, &userdata_a);
             printf("key_id=");
             for (size_t idx = 0; idx < sizeof(key_id); idx++)
             {
@@ -167,7 +171,7 @@ int main(int argc, char **argv)
         }
         case ACTION_ENCRYPT:
         {
-            rc = fscrypt_set_policy("/", encrypt_dir, &userdata_a);
+            rc = fscrypt_set_policy(target_directory, &userdata_a);
         }
         case ACTION_INVALID:
             break;
