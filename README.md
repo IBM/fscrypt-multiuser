@@ -38,10 +38,10 @@ The following options are available to append to the `pam_fscrypt_multiuser.so` 
 
 | Configuration | Option | Valid Values | Description |
 | - | - | - | - |
-| Auth, Password | loglevel | Numeric 0-7 | Set logging level. 0 disables logging, 7 enables debug tracing |
-| Auth | mount | Path | Specify a mountpoint path to unlock. This option can be specified multiple times. If not set, `/` is used. |
-| Auth | post-hook | shared_object.so | Specify a hook to run after attempting an unlock. See [PAM Hooks](#pam-hooks) |
-| Auth | hook-arg | arbitrary | Specify an additional argument to pass to the post-hook object |
+| Auth, Password | `loglevel` | Numeric 0-7 | Set logging level, see: [Logging](#logging) |
+| Auth | `mount` | Path | Specify a mountpoint path to unlock. This option can be specified multiple times. If not set, `/` is used. |
+| Auth | `post-hook` | shared_object.so | Specify a hook to run after attempting an unlock. See [PAM Hooks](#pam-hooks) |
+| Auth | `hook-arg` | arbitrary | Specify an additional argument to pass to the post-hook object |
 
 ### PAM Hooks
 
