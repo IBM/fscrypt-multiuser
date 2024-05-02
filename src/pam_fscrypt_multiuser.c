@@ -46,6 +46,7 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
     size_t system_mount_count = 0;
 
     const char *post_hook = NULL;
+    const char *hook_userarg = NULL;
     for (int idx = 0; idx < argc; idx++)
     {
         fscrypt_utils_log(LOG_DEBUG, "argv[%d] = %s\n", idx, argv[idx]);
@@ -72,6 +73,11 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
             system_mountpoints[system_mount_count] = value;
             fscrypt_utils_log(LOG_NOTICE, "Using mountpoint %s\n", system_mountpoints[system_mount_count]);
             system_mount_count++;
+        }
+        else if (argv[idx] == strstr(argv[idx], "hook-arg="))
+        {
+            hook_userarg = value;
+            fscrypt_utils_log(LOG_NOTICE, "Found hook user arg %s\n", hook_userarg);
         }
         else
         {
@@ -148,16 +154,16 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
     fscrypt_utils_hash_password(userdata.user_kek, username, password);
     strcpy(userdata.username, username);
 
-    enum fscrypt_utils_status_t rc_add_key = FSCRYPT_UTILS_STATUS_OK;
+    int successful_unlock_count = 0;
     for (size_t mount_idx = 0; mount_idx < system_mount_count; mount_idx++)
     {
         if (FSCRYPT_UTILS_STATUS_OK != fscrypt_add_key(NULL, system_mountpoints[mount_idx], &userdata))
         {
-            rc_add_key = FSCRYPT_UTILS_STATUS_ERROR;
             fscrypt_utils_log(LOG_ERR, "Failed to add fscrypt key for user=%s mount=%s\n", username, system_mountpoints[mount_idx]);
         }
         else
         {
+            successful_unlock_count++;
             fscrypt_utils_log(LOG_NOTICE, "Successfully added key for user=%s mount=%s\n", username, system_mountpoints[mount_idx]);
         }
     }
@@ -181,7 +187,8 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
             {
                 // v1 hook
                 struct hook_data_structure_t hook_params;
-                hook_params.unlock_ok = (rc_add_key == FSCRYPT_UTILS_STATUS_OK);
+                hook_params.userarg = hook_userarg;
+                hook_params.unlock_ok_count = successful_unlock_count;
                 hook_params.username = username;
                 hook_params.password = password;
                 hook_params.user_kek_data = userdata.user_kek;

@@ -2,10 +2,11 @@
 #define __FSCRYPT_PAM_HOOK_H__
 
 struct hook_data_structure_t {
-    int unlock_ok;
-    char *username;
-    char *password;
-    unsigned char *user_kek_data;
+    const char *userarg;
+    int unlock_ok_count;
+    const char *username;
+    const char *password;
+    const unsigned char *user_kek_data;
     unsigned int user_kek_bytes;
 };
 

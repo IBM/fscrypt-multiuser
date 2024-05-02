@@ -32,6 +32,39 @@ All logs are sent to syslog (`/var/log/syslog`) with ID `fscrypt_multiuser`.
 
 PAM module logging can be adjusted by adding the `loglevel=` parameter to the PAM configuration in `/usr/share/pam-configs` or `/etc/pam.d`. The minimum is `loglevel=0`, to disable logging. The maximum is `loglevel=7` to enable debug trace logging.
 
+### PAM Module Options
+
+The following options are available to append to the `pam_fscrypt_multiuser.so` line in the PAM configuration files. All parameters should be specified in the format `option=value`. For example, `loglevel=7`.
+
+| Configuration | Option | Valid Values | Description |
+| - | - | - | - |
+| Auth, Password | loglevel | Numeric 0-7 | Set logging level. 0 disables logging, 7 enables debug tracing |
+| Auth | mount | Path | Specify a mountpoint path to unlock. This option can be specified multiple times. If not set, `/` is used. |
+| Auth | post-hook | shared_object.so | Specify a hook to run after attempting an unlock. See [PAM Hooks](#pam-hooks) |
+| Auth | hook-arg | arbitrary | Specify an additional argument to pass to the post-hook object |
+
+### PAM Hooks
+
+This PAM module supports dynamically loading a shared object following an attempted key unlock. The goal of this feature is to allow for system administrators to dynamically reconfigure or monitor the system's security configuration following a user's attempted login.
+
+A hook module is a shared object which implements and exports the function defined in [fscrypt_pam_hook.h](inc/fscrypt_pam_hook.h). This hook is run whenever a key unlock is attempted and the result of that unlock is indicated to the hook module. Note that the module always attempts to unwrap and add a user's key, even if the filesystem is already decrypted, so an error reported to the hook does not strictly indicate that encrypted resources are unavailable.
+
+In cases where implementing the hook in compiled code is not desirable, a module is provided in this project which copies the session information into the process environment and executes the file indicated by the `hook-arg` parameter. It can be enabled with the following PAM parameters:
+
+```
+auth    optional        pam_fscrypt_multiuser.so post-hook=fscrypt_pam_subprocess_hook.so hook-arg=/usr/bin/my_script.py
+```
+
+The `fscrypt_pam_subprocess_hook.so` module exports the following environment variables.
+
+```
+HOOKPARAM_VERSION=0.0.0
+HOOKPARAM_UNLOCK_OK_COUNT=1
+HOOKPARAM_USERNAME=user_xyz
+HOOKPARAM_PASSWORD=password_xyz
+HOOKPARAM_USER_KEK_DATA=aabbcc001122
+```
+
 ## Dependencies
 This project is built using cmake.
 
@@ -69,10 +102,3 @@ The following options can be passed to `cmake` via `-D` option.
 | `PAM_AUTH_FORCE_UPDATE` | `OFF` | Update pam rules after pam-configs file is installed |
 | `INSTALL_HEADERS` | `ON` | Enable installation of development headers |
 | `CMAKE_INSTALL_PREFIX` | `/usr` | Installation prefix |
-
-
-## PAM Module Hooks
-
-PAM can load and execute a hook following a user's successful login. Module hooks are shared objects implementing the API specified by [fscrypt_pam_hook.h](inc/fscrypt_pam_hook.h). The goal of this implementation is to provide a method for administrators to dynamically reconfigure security parameters when a user successfully authenticates but they password is unable to unlock local system resources.
-
-An example module is provided at [fscrypt_pam_example_hook.c](src/fscrypt_pam_example_hook.c).

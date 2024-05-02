@@ -57,14 +57,16 @@ include_directories("${CMAKE_BINARY_DIR}/include")
 find_package(OpenSSL REQUIRED)
 message("Found OpenSSL version ${OPENSSL_VERSION}")
 
+# set(CMAKE_STATIC_LIBRARY_PREFIX "")
 
 add_library(pam_fscrypt_multiuser MODULE "src/pam_fscrypt_multiuser.c" "src/fscrypt_utils.c" "src/hasher.c")
 set_target_properties(pam_fscrypt_multiuser PROPERTIES PREFIX "")
 target_link_libraries(pam_fscrypt_multiuser PRIVATE ${OPENSSL_CRYPTO_LIBRARY})
 install(TARGETS pam_fscrypt_multiuser DESTINATION "${CMAKE_INSTALL_LIBDIR}/${CMAKE_INSTALL_PAMDIR}")
 
-add_library(fscrypt_pam_example_hook SHARED "src/fscrypt_pam_example_hook.c")
-# install(TARGETS fscrypt_pam_example_hook DESTINATION ${CMAKE_INSTALL_LIBDIR})
+add_library(fscrypt_pam_subprocess_hook SHARED "src/fscrypt_pam_subprocess_hook.c")
+set_target_properties(fscrypt_pam_subprocess_hook PROPERTIES PREFIX "")
+install(TARGETS fscrypt_pam_subprocess_hook DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
 add_executable(hash_my_password "src/hash_my_password.c" "src/hasher.c")
 target_link_libraries(hash_my_password PRIVATE ${OPENSSL_CRYPTO_LIBRARY})
