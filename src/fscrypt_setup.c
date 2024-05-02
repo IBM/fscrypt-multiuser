@@ -20,6 +20,7 @@ limitations under the License.
 #include <unistd.h>
 
 #include "fscrypt_utils.h"
+#include "BUILD_PARAMS.h"
 
 enum actions_t {
     ACTION_INVALID,
@@ -55,6 +56,7 @@ int main(int argc, char **argv)
         fprintf(stderr,
             "ERROR: Invalid action, or incorrect number of arguments\n"
             "\n"
+            "Build version: " BUILD_FULL_VERSION_STR "\n"
             "Usage: fscrypt_setup [action] [action_options]\n"
             "\n"
             "fscrypt_setup create_key [new_user] [new_hash]\n"

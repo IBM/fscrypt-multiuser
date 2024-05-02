@@ -24,7 +24,7 @@ limitations under the License.
 size_t fscrypt_utils_hash_password(uint8_t *hashout, const char *username, const char *password)
 {
     uint8_t salt[32] = {0};
-    SHA256((uint8_t*)username, fscrypt_util_min(strlen(username), MAX_USERNAME_BYTES), salt);
+    SHA256((const uint8_t*)username, fscrypt_util_min(strlen(username), MAX_USERNAME_BYTES), salt);
 
     const int ITERATIONS = 4096;
     int rc = PKCS5_PBKDF2_HMAC(

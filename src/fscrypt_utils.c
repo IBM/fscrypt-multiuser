@@ -27,6 +27,7 @@ limitations under the License.
 #include <syslog.h>
 #include <stdio.h>
 
+#include "BUILD_PARAMS.h"
 #include "fscrypt_utils.h"
 
 #define DATA_FILE_HEADER_VALUE ("FSCRYPT_MULTIUSR")
@@ -36,11 +37,11 @@ limitations under the License.
 #define USER_ID_BYTES (MAX_USERNAME_BYTES)
 #define DATA_FILE_FORMAT_VERSION (1)
 
-#define ENTER_FUNCTION() fscrypt_utils_log(LOG_DEBUG, "Enter %s\n", __FUNCTION__)
-#define EXIT_FUNCTION() fscrypt_utils_log(LOG_DEBUG, "Exit %s on line %d\n", __FUNCTION__, __LINE__)
+#define ENTER_FUNCTION() fscrypt_utils_log(LOG_DEBUG, "Enter %s\n", __func__)
+#define EXIT_FUNCTION() fscrypt_utils_log(LOG_DEBUG, "Exit %s on line %d\n", __func__, __LINE__)
 
 char g_stored_data_path[PATH_MAX] = FSCRYPT_DEFAULT_DATA_PATH;
-const char GLOBAL_DATA_LOCK[] = "/run/lock/fscrypt-multiuser.lock";
+const char GLOBAL_DATA_LOCK[] = BUILD_RUNSTATEDIR "/fscrypt-multiuser.lock";
 
 
 struct stored_user_data_t {
@@ -71,7 +72,7 @@ void secure_free(void *ptr, size_t size)
 // Returns number of bytes decoded (expect FSCRYPT_KEY_BYTES on success)
 size_t get_fscrypt_key(uint8_t fscrypt_key_out[FSCRYPT_KEY_BYTES], struct user_key_data_t *user_data);
 void get_user_identifier(uint8_t result[USER_ID_BYTES], struct user_key_data_t *user_data);
-struct stored_crypto_data_t *read_stored_data();
+struct stored_crypto_data_t *read_stored_data(void);
 struct stored_user_data_t *locate_matching_user(struct stored_crypto_data_t *buffer, struct user_key_data_t *user_data);
 int openssl_print_error(const char *str, size_t len, void *userdata);
 
@@ -110,7 +111,7 @@ char* fscrypt_utils_bytes_to_string(unsigned char *inbuf, size_t insize)
     return result;
 }
 
-char *fscrypt_util_stored_data_path()
+char *fscrypt_util_stored_data_path(void)
 {
     char *env = getenv(FSCRYPT_SET_DATA_PATH_ENVVAR);
     {
@@ -152,10 +153,17 @@ enum fscrypt_utils_status_t lock_unlock_data_file(int lock)
         if (fd != NULL)
         {
             char read_buf[32] = "";
-            fread(read_buf, 1, sizeof(read_buf), fd);
+            size_t bytes_read = fread(read_buf, 1, sizeof(read_buf), fd);
             fclose(fd);
-            locked_pid = atoi(read_buf);
-            fscrypt_utils_log(LOG_INFO, "fscrypt database is locked by %d\n", locked_pid);
+            if (bytes_read)
+            {
+                locked_pid = atoi(read_buf);
+                fscrypt_utils_log(LOG_INFO, "fscrypt database is locked by %d\n", locked_pid);
+            }
+            else
+            {
+                fscrypt_utils_log(LOG_WARNING, "failed to read data from lockfile\n");
+            }
         }
 
         pid_t this_pid = getpid();
@@ -249,6 +257,8 @@ void fscrypt_utils_log(int priority, const char *fmt, ...)
 
 int openssl_print_error(const char *str, size_t len, void *userdata)
 {
+    len=len;
+    userdata=userdata;
     fscrypt_utils_log(LOG_ERR, str);
     return 0;
 }
@@ -453,7 +463,7 @@ enum fscrypt_utils_status_t wrap_fscrypt_key(struct user_key_data_t *known_user,
 }
 
 
-struct stored_crypto_data_t *read_stored_data()
+struct stored_crypto_data_t *read_stored_data(void)
 {
     ENTER_FUNCTION();
     FILE *fd = fopen(fscrypt_util_stored_data_path(), "r");
@@ -600,7 +610,7 @@ enum fscrypt_utils_status_t fscrypt_add_key(uint8_t fscrypt_key_id_out[FSCRYPT_K
 
     int rc = ioctl(fd, FS_IOC_ADD_ENCRYPTION_KEY, add_key_args);
     close(fd);
-    enum fscrypt_utils_status_t func_return_code;
+    enum fscrypt_utils_status_t func_return_code = FSCRYPT_UTILS_STATUS_OK;
     if (rc != 0)
     {
         fscrypt_utils_log(LOG_ERR, "error: Failed to add key errno=%d\n", errno);
@@ -609,7 +619,6 @@ enum fscrypt_utils_status_t fscrypt_add_key(uint8_t fscrypt_key_id_out[FSCRYPT_K
     else if (fscrypt_key_id_out != NULL)
     {
         memcpy(fscrypt_key_id_out, add_key_args->key_spec.u.identifier, FSCRYPT_KEY_ID_BYTES);
-        func_return_code = FSCRYPT_UTILS_STATUS_OK;
     }
 
     memset(add_key_args, 0, sizeof(*add_key_args));

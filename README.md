@@ -29,41 +29,42 @@ All logs are sent to syslog (`/var/log/syslog`) with ID `fscrypt_multiuser`.
 PAM module logging can be adjusted by adding the `loglevel=` parameter to the PAM configuration in `/usr/share/pam-configs` or `/etc/pam.d`. The minimum is `loglevel=0`, to disable logging. The maximum is `loglevel=7` to enable debug trace logging.
 
 ## Dependencies
-This project requires the PAM and openssl development headers.
+This project is built using cmake.
+
+Build dependencies are the PAM and openssl development headers.
 
 For ubuntu:
 ```
-sudo apt install libpam0g-dev libssl-dev
+sudo apt install cmake libpam0g-dev libssl-dev
 ```
 
 ## Build and Install
 ```
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release -DINSTALL_HEADERS=OFF
 make all
 sudo make install
 ```
 
-For Ubuntu, the unix password integration will be enabled by default after installation. It can be disabled by running `sudo pam-auth-update` and de-selecting this module.
+For ubuntu and similar debian-based distros, installation of the pam-configs rule is set by the cmake options `PAM_RULE_INSTALL` and `PAM_AUTH_FORCE_UPDATE`.
+
+To install this package into a fakeroot, use `-DPAM_AUTH_FORCE_UPDATE=OFF` and set `DESTDIR` during installation.
+
+```
+make DESTDIR=fakeroot install
+```
 
 ### Build Options
 
-The following options can be passed to `make`.
+The following options can be passed to `cmake` via `-D` option.
 
-| Option | Description |
-| - | - |
-| DESTDIR | Install module into a fakeroot |
-| BUILD_DIR | Configure temporary build directory |
-| CC | Set C compiler |
-| EXTRA_CFLAGS | C compiler flags |
-| EXTRA_LDFLAGS | C linker flags |
-| BUILD_TYPE | "Debug" or "Release" build type |
-| DO_PAM_RULE_UPDATE | Y/N to enable/disable installing rule for ubuntu's pam-configs |
-| DO_PAM_AUTH_UPDATE | Y/N to run pam-auth-update during installation |
-| - | - |
-| PREFIX | Default: `/usr` |
-| INCLUDEDIR | Default: `$PREFIX/include` |
-| LIBDIR | Default: `$PREFIX/lib` |
-| BINDIR | Default: `$PREFIX/bin` |
-| PAMDIR | Default: `$LIBDIR/security` |
+| Option | Default | Description |
+| - | - | - |
+| `CMAKE_BUILD_TYPE` | `Debug` | Typically "Debug" or "Release" |
+| `PAM_RULE_INSTALL` | `OFF` | Enable installation of pam-configs rule |
+| `PAM_AUTH_FORCE_UPDATE` | `OFF` | Update pam rules after pam-configs file is installed |
+| `INSTALL_HEADERS` | `ON` | Enable installation of development headers |
+| `CMAKE_INSTALL_PREFIX` | `/usr` | Installation prefix |
 
 
 ## PAM Module Hooks

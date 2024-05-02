@@ -1,0 +1,17 @@
+#ifndef __BUILD_PARAMS_H__
+#define __BUILD_PARAMS_H__
+
+/*
+This is a template file for cmake.
+Include "BUILD_PARAMS.h" for usage
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+
+#define BUILD_VESRION "@fscrypt_multiuser_BUILDVERSION@"
+#define BUILD_TYPE "@CMAKE_BUILD_TYPE@"
+#define BUILD_FULL_VERSION_STR "@fscrypt_multiuser_BUILDVERSION@-@CMAKE_BUILD_TYPE@"
+#define BUILD_RUNSTATEDIR "@fscrypt_multiuser_LOCKSTATEDIR@"
+
+#endif  // __BUILDVERSION_H__

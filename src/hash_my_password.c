@@ -54,7 +54,8 @@ void get_password(const char *prompt, char *result, int hide_input)
     }
 }
 
-int main(int argc, char **argv)
+// int main(int argc, char **argv)
+int main(void)
 {
     char user1[PW_MAX_LENGTH];
     char pw1[PW_MAX_LENGTH];

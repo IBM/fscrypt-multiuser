@@ -18,10 +18,14 @@ limitations under the License.
 #include <string.h>
 
 #include "fscrypt_utils.h"
+#include "BUILD_PARAMS.h"
 
-int main(int argc, char **argv)
+// int main(int argc, char **argv)
+int main(void)
 {
     fscrypt_utils_set_log_stderr(1);
+
+    printf("Build version: %s\n", BUILD_FULL_VERSION_STR);
 
     size_t idx;
     char myuser[] = "test";
