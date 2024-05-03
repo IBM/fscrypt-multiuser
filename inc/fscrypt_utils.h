@@ -43,7 +43,8 @@ enum fscrypt_utils_status_t {
     FSCRYPT_UTILS_STATUS_ERROR = 1
 };
 
-char *fscrypt_util_stored_data_path(void);
+char *fscrypt_util_stored_data_get_path(void);
+enum fscrypt_utils_status_t fscrypt_util_stored_data_set_path(const char* new_path);
 
 enum fscrypt_utils_status_t fscrypt_utils_string_to_bytes(unsigned char *outbuf, char *hash_string);
 // Result must be free()'d when done

@@ -111,17 +111,21 @@ char* fscrypt_utils_bytes_to_string(unsigned char *inbuf, size_t insize)
     return result;
 }
 
-char *fscrypt_util_stored_data_path(void)
+char *fscrypt_util_stored_data_get_path(void)
 {
-    char *env = getenv(FSCRYPT_SET_DATA_PATH_ENVVAR);
-    {
-        if (env != NULL)
-        {
-            strncpy(g_stored_data_path, env, sizeof(g_stored_data_path));
-            g_stored_data_path[sizeof(g_stored_data_path) - 1] = '\0';
-        }
-    }
     return g_stored_data_path;
+}
+
+enum fscrypt_utils_status_t fscrypt_util_stored_data_set_path(const char* new_path)
+{
+    if (strlen(new_path) >= sizeof(g_stored_data_path))
+    {
+        fscrypt_utils_log(LOG_ERR, "fscrypt_util_stored_data_set_path error: requested path is too long\n");
+        return FSCRYPT_UTILS_STATUS_ERROR;
+    }
+    memset(g_stored_data_path, 0, sizeof(g_stored_data_path));
+    strncpy(g_stored_data_path, new_path, sizeof(g_stored_data_path) - 1);
+    return FSCRYPT_UTILS_STATUS_OK;
 }
 
 enum fscrypt_utils_status_t lock_unlock_data_file(int lock)
@@ -439,9 +443,9 @@ enum fscrypt_utils_status_t wrap_fscrypt_key(struct user_key_data_t *known_user,
 
     secure_free(&context, sizeof(*context));
 
-    FILE *fd = fopen(fscrypt_util_stored_data_path(), "w");
+    FILE *fd = fopen(fscrypt_util_stored_data_get_path(), "w");
     if (fd == NULL) {
-        fscrypt_utils_log(LOG_ERR, "error: Failed to open for writing %s\n", fscrypt_util_stored_data_path());
+        fscrypt_utils_log(LOG_ERR, "error: Failed to open for writing %s\n", fscrypt_util_stored_data_get_path());
         lock_unlock_data_file(0);
         EXIT_FUNCTION(); return FSCRYPT_UTILS_STATUS_ERROR;
     }
@@ -466,16 +470,16 @@ enum fscrypt_utils_status_t wrap_fscrypt_key(struct user_key_data_t *known_user,
 struct stored_crypto_data_t *read_stored_data(void)
 {
     ENTER_FUNCTION();
-    FILE *fd = fopen(fscrypt_util_stored_data_path(), "r");
+    FILE *fd = fopen(fscrypt_util_stored_data_get_path(), "r");
     if (fd == NULL) {
-        fscrypt_utils_log(LOG_ERR, "error: Failed to open %s\n", fscrypt_util_stored_data_path());
+        fscrypt_utils_log(LOG_ERR, "error: Failed to open %s\n", fscrypt_util_stored_data_get_path());
         EXIT_FUNCTION(); return NULL;
     }
 
     struct stat filestat;
     if (0 != fstat(fileno(fd), &filestat))
     {
-        fscrypt_utils_log(LOG_ERR, "error: Failed to get stat for %s\n", fscrypt_util_stored_data_path());
+        fscrypt_utils_log(LOG_ERR, "error: Failed to get stat for %s\n", fscrypt_util_stored_data_get_path());
         fclose(fd);
         EXIT_FUNCTION(); return NULL;
     }
@@ -528,7 +532,7 @@ struct stored_user_data_t *locate_matching_user(struct stored_crypto_data_t *buf
         struct stored_user_data_t *current_entry = &buffer->data[buf_idx];
         if (memcmp(current_entry->start_of_record, DATA_FILE_SOR_VALUE, DATA_FILE_SOR_LENGTH) != 0)
         {
-            fscrypt_utils_log(LOG_ERR, "error: failed to find Start of Record in %s at offset=%lu\n", fscrypt_util_stored_data_path(), buf_idx);
+            fscrypt_utils_log(LOG_ERR, "error: failed to find Start of Record in %s at offset=%lu\n", fscrypt_util_stored_data_get_path(), buf_idx);
             break;
         }
         if (0 == memcmp(current_entry->identifier, user_id, USER_ID_BYTES))

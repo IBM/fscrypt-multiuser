@@ -32,6 +32,7 @@ enum actions_t {
     ACTION_ENCRYPT,
 };
 
+#define FSCRYPT_SET_DATA_PATH_ENVVAR "FSCRYPT_MULTIUSER_DATA_PATH"
 
 int main(int argc, char **argv)
 {
@@ -123,13 +124,22 @@ int main(int argc, char **argv)
         target_directory = argv[4];
     }
 
+    char *datapath_env = getenv(FSCRYPT_SET_DATA_PATH_ENVVAR);
+    if (datapath_env != NULL)
+    {
+        if (FSCRYPT_UTILS_STATUS_OK != fscrypt_util_stored_data_set_path(datapath_env))
+        {
+            fprintf(stderr, "Failed to set data path from environment variable\n");
+            return 1;
+        }
+    }
 
     enum fscrypt_utils_status_t rc = FSCRYPT_UTILS_STATUS_ERROR;
     switch(action)
     {
         case ACTION_INIT_NEW_KEY:
         {
-            char *data_path = fscrypt_util_stored_data_path();
+            char *data_path = fscrypt_util_stored_data_get_path();
             if (access(data_path, F_OK) == 0)
             {
                 fprintf(stderr, "ERROR: data file already exists: %s\n", data_path);

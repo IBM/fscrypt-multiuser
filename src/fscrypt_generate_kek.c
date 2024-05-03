@@ -21,8 +21,9 @@ limitations under the License.
 
 #include "hasher.h"
 #include "constants.h"
+#include "BUILD_PARAMS.h"
 
-#define PW_MAX_LENGTH 128
+#define INPUT_MAX_LENGTH 256
 
 
 void get_password(const char *prompt, char *result, int hide_input)
@@ -41,7 +42,7 @@ void get_password(const char *prompt, char *result, int hide_input)
 
     int next_ch;
     size_t pw_idx = 0;
-    while((next_ch = getchar()) != '\n' && next_ch != EOF && pw_idx < PW_MAX_LENGTH)
+    while((next_ch = getchar()) != '\n' && next_ch != EOF && pw_idx < INPUT_MAX_LENGTH)
     {
         result[pw_idx] = next_ch;
         pw_idx++;
@@ -54,14 +55,54 @@ void get_password(const char *prompt, char *result, int hide_input)
     }
 }
 
-// int main(int argc, char **argv)
-int main(void)
+int main(int argc, char **argv)
 {
-    char user1[PW_MAX_LENGTH];
-    char pw1[PW_MAX_LENGTH];
+    if (argc > 2)
+    {
+        fprintf(stderr, "Too many arguments. Check fscrypt_generate_kek -h\n");
+        return 1;
+    }
+    if (argc == 2 && (0 == strcmp(argv[1], "-h") || 0 == strcmp(argv[1], "--help")))
+    {
+        fprintf(stderr,
+            "Build version: " BUILD_FULL_VERSION_STR "\n"
+            "Usage:\n"
+            "    fscrypt_generate_kek\n"
+            "    fscrypt_generate_kek [user]\n"
+            "\n"
+            "If the user is not provided on the command line, it will be read from stdin\n"
+            "\n"
+            "The password may be provided via FSCRYPT_GENERATE_KEK_PASSWORD environment variable.\n"
+            "If not provided via environment, it will be also be read from stdin\n"
+            "\n"
+            "If both user and password are passed via stdin, they must be separated by a newline\n"
+        );
+        return 1;
+    }
 
-    get_password("Username: ", user1, 0);
-    get_password("Password: ", pw1, 1);
+    char user1[INPUT_MAX_LENGTH];
+    char pw1[INPUT_MAX_LENGTH];
+
+    if (argc == 2)
+    {
+        strncpy(user1, argv[1], INPUT_MAX_LENGTH);
+        user1[INPUT_MAX_LENGTH - 1] = '\0';
+    }
+    else
+    {
+        get_password("Username: ", user1, 0);
+    }
+
+    char *pw_env = getenv("FSCRYPT_GENERATE_KEK_PASSWORD");
+    if (pw_env != NULL)
+    {
+        strncpy(pw1, pw_env, INPUT_MAX_LENGTH);
+        pw1[INPUT_MAX_LENGTH - 1] = '\0';
+    }
+    else
+    {
+        get_password("Password: ", pw1, 1);
+    }
 
     unsigned char key[FSCRYPT_USER_KEK_BYTES] = "";
     fscrypt_utils_hash_password(key, user1, pw1);
@@ -77,8 +118,8 @@ int main(void)
         strcat(result_escapes, hexbyte);
     }
 
-    printf("hash_ascii=%s\n", result_ascii);
-    printf("hash_escaped=%s\n", result_escapes);
+    printf("hash_ascii = %s\n", result_ascii);
+    printf("hash_escaped = %s\n", result_escapes);
 
     return 0;
 }

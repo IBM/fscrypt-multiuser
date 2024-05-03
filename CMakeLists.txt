@@ -68,9 +68,9 @@ add_library(fscrypt_pam_subprocess_hook SHARED "src/fscrypt_pam_subprocess_hook.
 set_target_properties(fscrypt_pam_subprocess_hook PROPERTIES PREFIX "")
 install(TARGETS fscrypt_pam_subprocess_hook DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
-add_executable(hash_my_password "src/hash_my_password.c" "src/hasher.c")
-target_link_libraries(hash_my_password PRIVATE ${OPENSSL_CRYPTO_LIBRARY})
-# install(TARGETS hash_my_password DESTINATION ${CMAKE_INSTALL_BINDIR})
+add_executable(fscrypt_generate_kek "src/fscrypt_generate_kek.c" "src/hasher.c")
+target_link_libraries(fscrypt_generate_kek PRIVATE ${OPENSSL_CRYPTO_LIBRARY})
+install(TARGETS fscrypt_generate_kek DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 add_executable(wraptest "src/wraptest.c" "src/fscrypt_utils.c" "src/hasher.c")
 target_link_libraries(wraptest PRIVATE ${OPENSSL_CRYPTO_LIBRARY})

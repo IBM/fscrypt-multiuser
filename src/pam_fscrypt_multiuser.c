@@ -30,23 +30,49 @@ limitations under the License.
 #include "BUILD_PARAMS.h"
 
 #define MAX_MOUNTPOINTS (32)
+#define MAX_DATAFILES (32)
 
-int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **argv)
+
+enum pam_fscrypt_source_func {
+    SOURCE_FUNCTION_AUTH = 0x1,
+    SOURCE_FUNCTION_PASSWORD = 0x2,
+    SOURCE_FUNCTION_ALL = 0x3,
+};
+
+struct pam_fscrypt_parameters {
+    int loglevel;
+    const char* system_mountpoints[MAX_MOUNTPOINTS];
+    size_t system_mount_count;
+    const char* datapaths[MAX_DATAFILES];
+    size_t datapath_count;
+    const char* post_hook;
+    const char* hook_userarg;
+};
+
+void pam_fscrypt_parse_arguments(enum pam_fscrypt_source_func source, int argc, const char **argv, struct pam_fscrypt_parameters *result);
+
+
+void pam_fscrypt_parse_arguments(enum pam_fscrypt_source_func source, int argc, const char **argv, struct pam_fscrypt_parameters *result)
 {
+    const char* const DEFAULT_MOUNTPOINT = "/";
 
     fscrypt_utils_set_log_stderr(0);
+    int default_loglevel;
 #ifdef DEBUG_BUILD
-    fscrypt_utils_set_log_min_priority(6);  // LOG_INFO
+    default_loglevel = 6;  // LOG_INFO
 #else
-    fscrypt_utils_set_log_min_priority(4);  // LOG_WARNING
+    default_loglevel = 4;  // LOG_WARNING
 #endif
+    fscrypt_utils_set_log_min_priority(default_loglevel);
 
-    const char* const DEFAULT_MOUNTPOINT = "/";
-    const char *system_mountpoints[MAX_MOUNTPOINTS] = {NULL};
-    size_t system_mount_count = 0;
+    result->loglevel = default_loglevel;
+    result->system_mountpoints[0] = NULL;
+    result->system_mount_count = 0;
+    result->datapaths[0] = NULL;
+    result->datapath_count = 0;
+    result->post_hook = NULL;
+    result->hook_userarg = NULL;
 
-    const char *post_hook = NULL;
-    const char *hook_userarg = NULL;
     for (int idx = 0; idx < argc; idx++)
     {
         fscrypt_utils_log(LOG_DEBUG, "argv[%d] = %s\n", idx, argv[idx]);
@@ -56,45 +82,87 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
             fscrypt_utils_log(LOG_WARNING, "Invalid paramter %s\n", argv[idx]);
             continue;
         }
-        value++;
-        if (argv[idx] == strstr(argv[idx], "post-hook="))
+        value++;  // Increment past the '=' character
+
+        if ((source & SOURCE_FUNCTION_ALL) && argv[idx] == strstr(argv[idx], "loglevel="))
         {
-            post_hook = value;
-            fscrypt_utils_log(LOG_NOTICE, "Using post-hook module %s\n", post_hook);
+            char *endptr = NULL;
+            long loglevel = strtol(value, &endptr, 0);
+            if (*endptr == '\0' && loglevel >= LOG_EMERG && loglevel <= LOG_DEBUG)
+            {
+                result->loglevel = (int)loglevel;
+                fscrypt_utils_set_log_min_priority(result->loglevel);
+                fscrypt_utils_log(LOG_NOTICE, "syslog level set to %d\n", result->loglevel);
+            }
+            else
+            {
+                fscrypt_utils_log(LOG_WARNING, "Invalid value for loglevel: %s\n", value);
+            }
         }
-        else if (argv[idx] == strstr(argv[idx], "loglevel="))
+        else if ((source & SOURCE_FUNCTION_ALL) && argv[idx] == strstr(argv[idx], "data-path="))
         {
-            int loglevel = atoi(value);
-            fscrypt_utils_set_log_min_priority(loglevel);
-            fscrypt_utils_log(LOG_NOTICE, "syslog level set to %d\n", loglevel);
+            if (result->datapath_count >= MAX_DATAFILES)
+            {
+                fscrypt_utils_log(LOG_ERR, "Exceeded max number of data paths. Ignoring %s\n", value);
+            }
+            else
+            {
+                result->datapaths[result->datapath_count] = value;
+                fscrypt_utils_log(LOG_NOTICE, "Using datapath[%d] = %s\n", result->datapath_count, value);
+                result->datapath_count++;
+            }
         }
-        else if (argv[idx] == strstr(argv[idx], "mount="))
+        else if ((source & SOURCE_FUNCTION_AUTH) && argv[idx] == strstr(argv[idx], "post-hook="))
         {
-            system_mountpoints[system_mount_count] = value;
-            fscrypt_utils_log(LOG_NOTICE, "Using mountpoint %s\n", system_mountpoints[system_mount_count]);
-            system_mount_count++;
+            result->post_hook = value;
+            fscrypt_utils_log(LOG_NOTICE, "Using post-hook module %s\n", result->post_hook);
         }
-        else if (argv[idx] == strstr(argv[idx], "hook-arg="))
+        else if ((source & SOURCE_FUNCTION_AUTH) && argv[idx] == strstr(argv[idx], "hook-arg="))
         {
-            hook_userarg = value;
-            fscrypt_utils_log(LOG_NOTICE, "Found hook user arg %s\n", hook_userarg);
+            result->hook_userarg = value;
+            fscrypt_utils_log(LOG_NOTICE, "Using hook parameter %s\n", result->hook_userarg);
+        }
+        else if ((source & SOURCE_FUNCTION_AUTH) && argv[idx] == strstr(argv[idx], "mount="))
+        {
+            if (result->system_mount_count >= MAX_MOUNTPOINTS)
+            {
+                fscrypt_utils_log(LOG_ERR, "Exceeded max number of mountpoints. Ignoring %s\n", value);
+            }
+            else
+            {
+                result->system_mountpoints[result->system_mount_count] = value;
+                fscrypt_utils_log(LOG_NOTICE, "Using mountpoint[%d] = %s\n", result->system_mount_count, value);
+                result->system_mount_count++;
+            }
         }
         else
         {
-            fscrypt_utils_log(LOG_WARNING, "Unused parameter %s\n", argv[idx]);
+            fscrypt_utils_log(LOG_WARNING, "Got extra unused parameter: %s\n", argv[idx]);
         }
     }
 
-    fscrypt_utils_log(LOG_DEBUG, "Starting pam_sm_authenticate flags=%d, argc=%d\n", flags, argc);
-    fscrypt_utils_log(LOG_INFO, "Build version %s\n", BUILD_FULL_VERSION_STR);
-
-    if (system_mount_count == 0)
+    if (result->system_mount_count == 0)
     {
-        fscrypt_utils_log(LOG_NOTICE, "No mountpoints specified. Using default: '%s'\n", DEFAULT_MOUNTPOINT);
-        system_mountpoints[0] = DEFAULT_MOUNTPOINT;
-        system_mount_count = 1;
+        fscrypt_utils_log(LOG_NOTICE, "No mountpoints specified. Using default: %s\n", DEFAULT_MOUNTPOINT);
+        result->system_mountpoints[0] = DEFAULT_MOUNTPOINT;
+        result->system_mount_count = 1;
     }
 
+    if (result->datapath_count == 0)
+    {
+        fscrypt_utils_log(LOG_NOTICE, "No datapaths specified. Using: %s\n", fscrypt_util_stored_data_get_path());
+    }
+
+    fscrypt_utils_log(LOG_INFO, "Build version %s\n", BUILD_FULL_VERSION_STR);
+}
+
+int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **argv)
+{
+    struct pam_fscrypt_parameters args;
+    pam_fscrypt_parse_arguments(SOURCE_FUNCTION_AUTH, argc, argv, &args);
+    fprintf(stderr, "args.loglevel=%d\n", args.loglevel);
+
+    fscrypt_utils_log(LOG_DEBUG, "Starting pam_sm_authenticate flags=%d\n", flags);
 
     // List of services which authenticate for non-login purposes.
     // It doesn't strictly hurt to add keys during these operations
@@ -155,23 +223,40 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
     strcpy(userdata.username, username);
 
     int successful_unlock_count = 0;
-    for (size_t mount_idx = 0; mount_idx < system_mount_count; mount_idx++)
+    for (size_t mount_idx = 0; mount_idx < args.system_mount_count; mount_idx++)
     {
-        if (FSCRYPT_UTILS_STATUS_OK != fscrypt_add_key(NULL, system_mountpoints[mount_idx], &userdata))
+        for (size_t datapath_idx = 0; datapath_idx < fscrypt_util_max(1, args.datapath_count); datapath_idx++)
         {
-            fscrypt_utils_log(LOG_ERR, "Failed to add fscrypt key for user=%s mount=%s\n", username, system_mountpoints[mount_idx]);
-        }
-        else
-        {
-            successful_unlock_count++;
-            fscrypt_utils_log(LOG_NOTICE, "Successfully added key for user=%s mount=%s\n", username, system_mountpoints[mount_idx]);
+            if (args.datapaths[datapath_idx] != NULL)
+            {
+                if (FSCRYPT_UTILS_STATUS_OK != fscrypt_util_stored_data_set_path(args.datapaths[datapath_idx]))
+                {
+                    fscrypt_utils_log(LOG_ERR, "Failed to use datapath %s\n", args.datapaths[datapath_idx]);
+                    continue;
+                }
+            }
+            if (FSCRYPT_UTILS_STATUS_OK != fscrypt_add_key(NULL, args.system_mountpoints[mount_idx], &userdata))
+            {
+                fscrypt_utils_log(LOG_ERR,
+                    "Failed to add fscrypt key for user=%s mount=%s datapath=%s\n",
+                    username, args.system_mountpoints[mount_idx], fscrypt_util_stored_data_get_path()
+                );
+            }
+            else
+            {
+                successful_unlock_count++;
+                fscrypt_utils_log(LOG_NOTICE,
+                    "Successfully added key for user=%s mount=%s datapath=%s\n",
+                    username, args.system_mountpoints[mount_idx], fscrypt_util_stored_data_get_path()
+                );
+            }
         }
     }
 
-    if (post_hook != NULL)
+    if (args.post_hook != NULL)
     {
-        fscrypt_utils_log(LOG_DEBUG, "Starting post-hook execution %s\n", post_hook);
-        void *handle = dlopen(post_hook, RTLD_NOW);
+        fscrypt_utils_log(LOG_DEBUG, "Starting post-hook execution %s\n", args.post_hook);
+        void *handle = dlopen(args.post_hook, RTLD_NOW);
         if (handle == NULL)
         {
             fscrypt_utils_log(LOG_ERR, "%s\n", dlerror());
@@ -187,7 +272,7 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
             {
                 // v1 hook
                 struct hook_data_structure_t hook_params;
-                hook_params.userarg = hook_userarg;
+                hook_params.userarg = args.hook_userarg;
                 hook_params.unlock_ok_count = successful_unlock_count;
                 hook_params.username = username;
                 hook_params.password = password;
@@ -207,36 +292,10 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 
 int pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
-    fscrypt_utils_set_log_stderr(0);
-#ifdef DEBUG_BUILD
-    fscrypt_utils_set_log_min_priority(6);  // LOG_INFO
-#else
-    fscrypt_utils_set_log_min_priority(4);  // LOG_WARNING
-#endif
+    struct pam_fscrypt_parameters args;
+    pam_fscrypt_parse_arguments(SOURCE_FUNCTION_PASSWORD, argc, argv, &args);
 
-    for (int idx = 0; idx < argc; idx++)
-    {
-        fscrypt_utils_log(LOG_DEBUG, "argv[%d] = %s\n", idx, argv[idx]);
-        const char *value = strchr(argv[idx], '=');
-        if (value == NULL)
-        {
-            fscrypt_utils_log(LOG_WARNING, "Invalid paramter %s\n", argv[idx]);
-            continue;
-        }
-        value++;
-        if (argv[idx] == strstr(argv[idx], "loglevel="))
-        {
-            int loglevel = atoi(value);
-            fscrypt_utils_set_log_min_priority(loglevel);
-            fscrypt_utils_log(LOG_NOTICE, "syslog level set to %d\n", loglevel);
-        }
-        else
-        {
-            fscrypt_utils_log(LOG_WARNING, "Unused paramter %s\n", argv[idx]);
-        }
-    }
-    fscrypt_utils_log(LOG_DEBUG, "Starting pam_sm_chauthtok flags=%d, argc=%d\n", flags, argc);
-    fscrypt_utils_log(LOG_INFO, "Build version %s\n", BUILD_FULL_VERSION_STR);
+    fscrypt_utils_log(LOG_DEBUG, "Starting pam_sm_chauthtok flags=%d\n", flags);
 
     if (!(flags & PAM_UPDATE_AUTHTOK))
     {
