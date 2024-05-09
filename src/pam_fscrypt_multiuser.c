@@ -160,7 +160,6 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 {
     struct pam_fscrypt_parameters args;
     pam_fscrypt_parse_arguments(SOURCE_FUNCTION_AUTH, argc, argv, &args);
-    fprintf(stderr, "args.loglevel=%d\n", args.loglevel);
 
     fscrypt_utils_log(LOG_DEBUG, "Starting pam_sm_authenticate flags=%d\n", flags);
 

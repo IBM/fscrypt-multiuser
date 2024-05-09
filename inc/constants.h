@@ -18,6 +18,8 @@ limitations under the License.
 #ifndef __CONSTANTS_H__
 #define __CONSTANTS_H__
 
+#define DATA_FILE_FORMAT_VERSION (2)
+
 #define OPENSSL_KEK_UPDATE_MIN_BYTES (FSCRYPT_KEY_BYTES + 8)
 
 #define FSCRYPT_USER_KEK_BYTES (32)

@@ -35,7 +35,6 @@ limitations under the License.
 #define DATA_FILE_SOR_VALUE ("SOR ")
 #define DATA_FILE_SOR_LENGTH (4)
 #define USER_ID_BYTES (MAX_USERNAME_BYTES)
-#define DATA_FILE_FORMAT_VERSION (1)
 
 #define ENTER_FUNCTION() fscrypt_utils_log(LOG_DEBUG, "Enter %s\n", __func__)
 #define EXIT_FUNCTION() fscrypt_utils_log(LOG_DEBUG, "Exit %s on line %d\n", __func__, __LINE__)
@@ -274,7 +273,7 @@ size_t fscrypt_utils_generate_random_key(uint8_t *keyout, size_t size)
     int rc = RAND_priv_bytes(keyout, size);
     if (rc != 1)
     {
-        fscrypt_utils_log(LOG_ERR, "error: Failed to generate random data\n", __LINE__);
+        fscrypt_utils_log(LOG_ERR, "error: Failed to generate random data\n");
         ERR_print_errors_cb(openssl_print_error, NULL);
         EXIT_FUNCTION(); return 0;
     }
@@ -289,7 +288,7 @@ size_t wrap_unwrap_key(struct crypto_context_t *crypto_context, uint8_t *outbuf,
     EVP_CIPHER_CTX *context = EVP_CIPHER_CTX_new();
     if (context == NULL)
     {
-        fscrypt_utils_log(LOG_ERR, "error: Failed to create cipher context\n", __LINE__);
+        fscrypt_utils_log(LOG_ERR, "error: Failed to create cipher context\n");
         ERR_print_errors_cb(openssl_print_error, NULL);
         EXIT_FUNCTION(); return 0;
     }
@@ -303,7 +302,7 @@ size_t wrap_unwrap_key(struct crypto_context_t *crypto_context, uint8_t *outbuf,
     rc = EVP_CipherInit_ex(context, EVP_aes_256_wrap(), NULL, crypto_context->unlock_key, crypto_context->iv, encrypt);
     if (rc != 1)
     {
-        fscrypt_utils_log(LOG_ERR, "error: Failed to initialize cipher context\n", __LINE__);
+        fscrypt_utils_log(LOG_ERR, "error: Failed to initialize cipher context\n");
         ERR_print_errors_cb(openssl_print_error, NULL);
         goto end_crypto;
     }
@@ -312,7 +311,7 @@ size_t wrap_unwrap_key(struct crypto_context_t *crypto_context, uint8_t *outbuf,
     data_length += outl;
     if (rc != 1)
     {
-        fscrypt_utils_log(LOG_ERR, "error: Failed to transform data\n", __LINE__);
+        fscrypt_utils_log(LOG_ERR, "error: Failed to transform data\n");
         ERR_print_errors_cb(openssl_print_error, NULL);
         goto end_crypto;
     }
@@ -321,7 +320,7 @@ size_t wrap_unwrap_key(struct crypto_context_t *crypto_context, uint8_t *outbuf,
     data_length += outl;
     if (rc != 1)
     {
-        fscrypt_utils_log(LOG_ERR, "error: Failed to finalize data transformation\n", __LINE__);
+        fscrypt_utils_log(LOG_ERR, "error: Failed to finalize data transformation\n");
         ERR_print_errors_cb(openssl_print_error, NULL);
         goto end_crypto;
     }
@@ -426,7 +425,7 @@ enum fscrypt_utils_status_t wrap_fscrypt_key(struct user_key_data_t *known_user,
 
     if (data_buffer == NULL || entry_buffer == NULL)
     {
-        fscrypt_utils_log(LOG_ERR, "error: Failed to create/get data buffer\n", __LINE__);
+        fscrypt_utils_log(LOG_ERR, "error: Failed to create/get data buffer\n");
         secure_free(&context, sizeof(*context));
         lock_unlock_data_file(0);
         EXIT_FUNCTION(); return FSCRYPT_UTILS_STATUS_ERROR;
@@ -496,7 +495,7 @@ struct stored_crypto_data_t *read_stored_data(void)
     uint8_t *data_buffer = (uint8_t*)calloc(alloc_size, 1);
     if (data_buffer == NULL)
     {
-        fscrypt_utils_log(LOG_ERR, "error: Allocate memory\n", __LINE__);
+        fscrypt_utils_log(LOG_ERR, "error: Allocate memory\n");
         EXIT_FUNCTION(); return NULL;
     }
     size_t read_size = fread(data_buffer, 1, file_size, fd);
@@ -512,8 +511,15 @@ struct stored_crypto_data_t *read_stored_data(void)
     struct stored_crypto_data_t* result = (struct stored_crypto_data_t*)data_buffer;
     if (memcmp(result->file_header, DATA_FILE_HEADER_VALUE, DATA_FILE_HEADER_LENGTH) != 0)
     {
+        fscrypt_utils_log(LOG_ERR, "error: Invalid file header\n");
         free(data_buffer);
-        fscrypt_utils_log(LOG_ERR, "error: Invalid file header\n", __LINE__);
+        EXIT_FUNCTION(); return NULL;
+    }
+
+    if (result->version != DATA_FILE_FORMAT_VERSION)
+    {
+        fscrypt_utils_log(LOG_ERR, "error: Invalid data format version. Expected=%d, found=%d\n", DATA_FILE_FORMAT_VERSION, result->version);
+        free(data_buffer);
         EXIT_FUNCTION(); return NULL;
     }
 
@@ -543,7 +549,7 @@ struct stored_user_data_t *locate_matching_user(struct stored_crypto_data_t *buf
     }
     if (matching_user == NULL)
     {
-        fscrypt_utils_log(LOG_ERR, "error: No existing key found for user '%s'\n", user_data->username);
+        fscrypt_utils_log(LOG_NOTICE, "No existing key found for user '%s'\n", user_data->username);
     }
     EXIT_FUNCTION(); return matching_user;
 
@@ -567,6 +573,7 @@ size_t get_fscrypt_key(uint8_t fscrypt_key_out[FSCRYPT_KEY_BYTES], struct user_k
     struct stored_user_data_t *stored_data = locate_matching_user(data_buffer, user_data);
     if (stored_data == NULL)
     {
+        fscrypt_utils_log(LOG_ERR, "error: Failed to find stored data for %s\n", user_data->username);
         free(data_buffer);
         EXIT_FUNCTION(); return 0;
     }
@@ -592,7 +599,7 @@ enum fscrypt_utils_status_t fscrypt_add_key(uint8_t fscrypt_key_id_out[FSCRYPT_K
     uint8_t *fscrypt_key = (uint8_t*)calloc(FSCRYPT_KEY_BYTES, 1);
     if (FSCRYPT_KEY_BYTES != get_fscrypt_key(fscrypt_key, known_user))
     {
-        fscrypt_utils_log(LOG_ERR, "error: Failed to get fscrypt key\n", __LINE__);
+        fscrypt_utils_log(LOG_ERR, "error: Failed to get fscrypt key\n");
         EXIT_FUNCTION(); return FSCRYPT_UTILS_STATUS_ERROR;
     }
 

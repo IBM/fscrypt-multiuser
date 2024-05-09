@@ -23,10 +23,14 @@ limitations under the License.
 
 size_t fscrypt_utils_hash_password(uint8_t *hashout, const char *username, const char *password)
 {
+    // Use username as salt. Hashed so that it always fits in 32 bytes.
     uint8_t salt[32] = {0};
     SHA256((const uint8_t*)username, fscrypt_util_min(strlen(username), MAX_USERNAME_BYTES), salt);
 
-    const int ITERATIONS = 4096;
+    // The number of iterations used is somewhat arbitrary.
+    // 150000 approaches 100ms computation time on mundane hardware (in 2024), which
+    // is plenty sufficient for this application.
+    const int ITERATIONS = 150000;
     int rc = PKCS5_PBKDF2_HMAC(
         password, -1,
         salt, sizeof(salt),
