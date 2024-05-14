@@ -24,8 +24,10 @@ limitations under the License.
 #include <fcntl.h>
 #include <time.h>
 #include <limits.h>
-#include <syslog.h>
 #include <stdio.h>
+
+#define SYSLOG_NAMES
+#include <syslog.h>
 
 #include "BUILD_PARAMS.h"
 #include "fscrypt_utils.h"
@@ -90,7 +92,7 @@ enum fscrypt_utils_status_t fscrypt_utils_string_to_bytes(unsigned char *outbuf,
         long next_byte = strtol(nextdata, &endptr, 16);
         if (*endptr != '\0')
         {
-            fscrypt_utils_log(LOG_ERR, "error: %s is not a valid hexidecimal number\n", in_string);
+            fscrypt_utils_log(LOG_ERR, "%s is not a valid hexidecimal number\n", in_string);
             return FSCRYPT_UTILS_STATUS_ERROR;
         }
         outbuf[idx / 2] = next_byte & 0xff;
@@ -119,7 +121,7 @@ enum fscrypt_utils_status_t fscrypt_util_stored_data_set_path(const char* new_pa
 {
     if (strlen(new_path) >= sizeof(g_stored_data_path))
     {
-        fscrypt_utils_log(LOG_ERR, "fscrypt_util_stored_data_set_path error: requested path is too long\n");
+        fscrypt_utils_log(LOG_ERR, "fscrypt_util_stored_data_set_path requested path is too long\n");
         return FSCRYPT_UTILS_STATUS_ERROR;
     }
     memset(g_stored_data_path, 0, sizeof(g_stored_data_path));
@@ -174,19 +176,19 @@ enum fscrypt_utils_status_t lock_unlock_data_file(int lock)
         {
             if (locked_pid == this_pid)
             {
-                fscrypt_utils_log(LOG_ERR, "error: %s Multiple calls to lock data file\n", lock_path);
+                fscrypt_utils_log(LOG_ERR, "%s Multiple calls to lock data file\n", lock_path);
                 continue;
             }
             if (locked_pid != -1)
             {
-                fscrypt_utils_log(LOG_ERR, "error: %s Data file is LOCKED by pid %d\n", lock_path, locked_pid);
+                fscrypt_utils_log(LOG_ERR, "%s Data file is LOCKED by pid %d\n", lock_path, locked_pid);
                 continue;
             }
 
             int fd_create = open(lock_path, O_WRONLY | O_CREAT | O_EXCL, 0);
             if (fd_create < 0)
             {
-                fscrypt_utils_log(LOG_ERR, "error: %s Failed to open for writing\n", lock_path);
+                fscrypt_utils_log(LOG_ERR, "%s Failed to open for writing\n", lock_path);
                 continue;
             }
             fchmod(fd_create, 0666);
@@ -198,18 +200,18 @@ enum fscrypt_utils_status_t lock_unlock_data_file(int lock)
         {
             if (locked_pid != this_pid)
             {
-                fscrypt_utils_log(LOG_ERR, "error: %s Cannot unlock data file, locked by pid %d\n", lock_path, locked_pid);
+                fscrypt_utils_log(LOG_ERR, "%s Cannot unlock data file, locked by pid %d\n", lock_path, locked_pid);
                 continue;
             }
         
             if (locked_pid == -1)
             {
-                fscrypt_utils_log(LOG_ERR, "error: %s Attempted to unlock data file when not locked\n", lock_path);
+                fscrypt_utils_log(LOG_ERR, "%s Attempted to unlock data file when not locked\n", lock_path);
                 continue;
             }
             if (0 != unlink(lock_path))
             {
-                fscrypt_utils_log(LOG_ERR, "error: %s Failed to remove lock\n", lock_path);
+                fscrypt_utils_log(LOG_ERR, "%s Failed to remove lock\n", lock_path);
                 continue;
             }
             fscrypt_utils_log(LOG_INFO, "successfully released database lock for pid %d\n", this_pid);
@@ -248,11 +250,33 @@ void fscrypt_utils_set_log_min_priority(int min_priority)
 
 void fscrypt_utils_log(int priority, const char *fmt, ...)
 {
-    openlog(FSCRYPT_UTILS_SYSLOG_ID, syslog_flags, LOG_USER);
+#ifdef SYSLOG_NAMES
 
+#define FSCRYPT_UTILS_LOG_MAX_MSG_LENGTH (1024)
+    char msg_formatted[FSCRYPT_UTILS_LOG_MAX_MSG_LENGTH + 1] = "";
+
+    char NAME_DEFAULT[] = "invalid_priority";
+    char *pri_name = NAME_DEFAULT;
+    // see syslog.h
+    for (CODE *priority_code = &prioritynames[0]; priority_code->c_name != NULL; priority_code++)
+    {
+        if (priority_code->c_val == priority)
+        {
+            pri_name = priority_code->c_name;
+            break;
+        }
+    }
+    snprintf(msg_formatted, FSCRYPT_UTILS_LOG_MAX_MSG_LENGTH, "%7s(%d) %s", pri_name, priority, fmt);
+
+#else  // SYSLOG_NAMES is disabled
+    const char *msg_formatted = fmt;
+#endif
+
+
+    openlog(FSCRYPT_UTILS_SYSLOG_ID, syslog_flags, LOG_USER);
     va_list argptr;
     va_start(argptr, fmt);
-    vsyslog(priority, fmt, argptr);
+    vsyslog(priority, msg_formatted, argptr);
     va_end(argptr);
 
     closelog();
@@ -273,7 +297,7 @@ size_t fscrypt_utils_generate_random_key(uint8_t *keyout, size_t size)
     int rc = RAND_priv_bytes(keyout, size);
     if (rc != 1)
     {
-        fscrypt_utils_log(LOG_ERR, "error: Failed to generate random data\n");
+        fscrypt_utils_log(LOG_ERR, "Failed to generate random data\n");
         ERR_print_errors_cb(openssl_print_error, NULL);
         EXIT_FUNCTION(); return 0;
     }
@@ -288,7 +312,7 @@ size_t wrap_unwrap_key(struct crypto_context_t *crypto_context, uint8_t *outbuf,
     EVP_CIPHER_CTX *context = EVP_CIPHER_CTX_new();
     if (context == NULL)
     {
-        fscrypt_utils_log(LOG_ERR, "error: Failed to create cipher context\n");
+        fscrypt_utils_log(LOG_ERR, "Failed to create cipher context\n");
         ERR_print_errors_cb(openssl_print_error, NULL);
         EXIT_FUNCTION(); return 0;
     }
@@ -302,7 +326,7 @@ size_t wrap_unwrap_key(struct crypto_context_t *crypto_context, uint8_t *outbuf,
     rc = EVP_CipherInit_ex(context, EVP_aes_256_wrap(), NULL, crypto_context->unlock_key, crypto_context->iv, encrypt);
     if (rc != 1)
     {
-        fscrypt_utils_log(LOG_ERR, "error: Failed to initialize cipher context\n");
+        fscrypt_utils_log(LOG_ERR, "Failed to initialize cipher context\n");
         ERR_print_errors_cb(openssl_print_error, NULL);
         goto end_crypto;
     }
@@ -311,7 +335,7 @@ size_t wrap_unwrap_key(struct crypto_context_t *crypto_context, uint8_t *outbuf,
     data_length += outl;
     if (rc != 1)
     {
-        fscrypt_utils_log(LOG_ERR, "error: Failed to transform data\n");
+        fscrypt_utils_log(LOG_ERR, "Failed to transform data\n");
         ERR_print_errors_cb(openssl_print_error, NULL);
         goto end_crypto;
     }
@@ -320,7 +344,7 @@ size_t wrap_unwrap_key(struct crypto_context_t *crypto_context, uint8_t *outbuf,
     data_length += outl;
     if (rc != 1)
     {
-        fscrypt_utils_log(LOG_ERR, "error: Failed to finalize data transformation\n");
+        fscrypt_utils_log(LOG_ERR, "Failed to finalize data transformation\n");
         ERR_print_errors_cb(openssl_print_error, NULL);
         goto end_crypto;
     }
@@ -352,7 +376,7 @@ enum fscrypt_utils_status_t wrap_fscrypt_key(struct user_key_data_t *known_user,
         if (mode != KEY_MODE_DROP_TABLE)
         {
             secure_free(&fscrypt_key, FSCRYPT_KEY_BYTES);
-            fscrypt_utils_log(LOG_ERR, "error: If a known_user is not supplied, you must use mode=KEY_MODE_DROP_TABLE\n");
+            fscrypt_utils_log(LOG_ERR, "If a known_user is not supplied, you must use mode=KEY_MODE_DROP_TABLE\n");
             EXIT_FUNCTION(); return FSCRYPT_UTILS_STATUS_ERROR;
         }
         if (FSCRYPT_KEY_BYTES != fscrypt_utils_generate_random_key(fscrypt_key, FSCRYPT_KEY_BYTES))
@@ -412,7 +436,7 @@ enum fscrypt_utils_status_t wrap_fscrypt_key(struct user_key_data_t *known_user,
             {
                 if (NULL != locate_matching_user(data_buffer, new_user))
                 {
-                    fscrypt_utils_log(LOG_ERR, "error: User %s already has a stored key\n", new_user->username);
+                    fscrypt_utils_log(LOG_ERR, "User %s already has a stored key\n", new_user->username);
                 }
                 else
                 {
@@ -425,7 +449,7 @@ enum fscrypt_utils_status_t wrap_fscrypt_key(struct user_key_data_t *known_user,
 
     if (data_buffer == NULL || entry_buffer == NULL)
     {
-        fscrypt_utils_log(LOG_ERR, "error: Failed to create/get data buffer\n");
+        fscrypt_utils_log(LOG_ERR, "Failed to create/get data buffer\n");
         secure_free(&context, sizeof(*context));
         lock_unlock_data_file(0);
         EXIT_FUNCTION(); return FSCRYPT_UTILS_STATUS_ERROR;
@@ -444,7 +468,7 @@ enum fscrypt_utils_status_t wrap_fscrypt_key(struct user_key_data_t *known_user,
 
     FILE *fd = fopen(fscrypt_util_stored_data_get_path(), "w");
     if (fd == NULL) {
-        fscrypt_utils_log(LOG_ERR, "error: Failed to open for writing %s\n", fscrypt_util_stored_data_get_path());
+        fscrypt_utils_log(LOG_ERR, "Failed to open for writing %s\n", fscrypt_util_stored_data_get_path());
         lock_unlock_data_file(0);
         EXIT_FUNCTION(); return FSCRYPT_UTILS_STATUS_ERROR;
     }
@@ -458,7 +482,7 @@ enum fscrypt_utils_status_t wrap_fscrypt_key(struct user_key_data_t *known_user,
 
     if (bytes_written != data_size)
     {
-        fscrypt_utils_log(LOG_ERR, "error: Write failed n=%lu\n", bytes_written);
+        fscrypt_utils_log(LOG_ERR, "Write failed n=%lu\n", bytes_written);
         EXIT_FUNCTION(); return FSCRYPT_UTILS_STATUS_ERROR;
     }
 
@@ -471,14 +495,14 @@ struct stored_crypto_data_t *read_stored_data(void)
     ENTER_FUNCTION();
     FILE *fd = fopen(fscrypt_util_stored_data_get_path(), "r");
     if (fd == NULL) {
-        fscrypt_utils_log(LOG_ERR, "error: Failed to open %s\n", fscrypt_util_stored_data_get_path());
+        fscrypt_utils_log(LOG_ERR, "Failed to open %s\n", fscrypt_util_stored_data_get_path());
         EXIT_FUNCTION(); return NULL;
     }
 
     struct stat filestat;
     if (0 != fstat(fileno(fd), &filestat))
     {
-        fscrypt_utils_log(LOG_ERR, "error: Failed to get stat for %s\n", fscrypt_util_stored_data_get_path());
+        fscrypt_utils_log(LOG_ERR, "Failed to get stat for %s\n", fscrypt_util_stored_data_get_path());
         fclose(fd);
         EXIT_FUNCTION(); return NULL;
     }
@@ -486,7 +510,7 @@ struct stored_crypto_data_t *read_stored_data(void)
 
     if ((file_size - STORED_HEADER_SIZE) % STORED_ENTRY_SIZE != 0)
     {
-        fscrypt_utils_log(LOG_ERR, "error: Invalid file size %lu\n", file_size);
+        fscrypt_utils_log(LOG_ERR, "Invalid file size %lu\n", file_size);
         fclose(fd);
         EXIT_FUNCTION(); return NULL;
     }
@@ -495,7 +519,7 @@ struct stored_crypto_data_t *read_stored_data(void)
     uint8_t *data_buffer = (uint8_t*)calloc(alloc_size, 1);
     if (data_buffer == NULL)
     {
-        fscrypt_utils_log(LOG_ERR, "error: Allocate memory\n");
+        fscrypt_utils_log(LOG_ERR, "Allocate memory\n");
         EXIT_FUNCTION(); return NULL;
     }
     size_t read_size = fread(data_buffer, 1, file_size, fd);
@@ -504,21 +528,21 @@ struct stored_crypto_data_t *read_stored_data(void)
     if (read_size != file_size)
     {
         free(data_buffer);
-        fscrypt_utils_log(LOG_ERR, "error: File read failed read_size=%lu, file_size=%lu\n", read_size, file_size);
+        fscrypt_utils_log(LOG_ERR, "File read failed read_size=%lu, file_size=%lu\n", read_size, file_size);
         EXIT_FUNCTION(); return NULL;
     }
 
     struct stored_crypto_data_t* result = (struct stored_crypto_data_t*)data_buffer;
     if (memcmp(result->file_header, DATA_FILE_HEADER_VALUE, DATA_FILE_HEADER_LENGTH) != 0)
     {
-        fscrypt_utils_log(LOG_ERR, "error: Invalid file header\n");
+        fscrypt_utils_log(LOG_ERR, "Invalid file header\n");
         free(data_buffer);
         EXIT_FUNCTION(); return NULL;
     }
 
     if (result->version != DATA_FILE_FORMAT_VERSION)
     {
-        fscrypt_utils_log(LOG_ERR, "error: Invalid data format version. Expected=%d, found=%d\n", DATA_FILE_FORMAT_VERSION, result->version);
+        fscrypt_utils_log(LOG_ERR, "Invalid data format version. Expected=%d, found=%d\n", DATA_FILE_FORMAT_VERSION, result->version);
         free(data_buffer);
         EXIT_FUNCTION(); return NULL;
     }
@@ -538,7 +562,7 @@ struct stored_user_data_t *locate_matching_user(struct stored_crypto_data_t *buf
         struct stored_user_data_t *current_entry = &buffer->data[buf_idx];
         if (memcmp(current_entry->start_of_record, DATA_FILE_SOR_VALUE, DATA_FILE_SOR_LENGTH) != 0)
         {
-            fscrypt_utils_log(LOG_ERR, "error: failed to find Start of Record in %s at offset=%lu\n", fscrypt_util_stored_data_get_path(), buf_idx);
+            fscrypt_utils_log(LOG_ERR, "failed to find Start of Record in %s at offset=%lu\n", fscrypt_util_stored_data_get_path(), buf_idx);
             break;
         }
         if (0 == memcmp(current_entry->identifier, user_id, USER_ID_BYTES))
@@ -573,7 +597,7 @@ size_t get_fscrypt_key(uint8_t fscrypt_key_out[FSCRYPT_KEY_BYTES], struct user_k
     struct stored_user_data_t *stored_data = locate_matching_user(data_buffer, user_data);
     if (stored_data == NULL)
     {
-        fscrypt_utils_log(LOG_ERR, "error: Failed to find stored data for %s\n", user_data->username);
+        fscrypt_utils_log(LOG_ERR, "Failed to find stored data for %s\n", user_data->username);
         free(data_buffer);
         EXIT_FUNCTION(); return 0;
     }
@@ -599,14 +623,14 @@ enum fscrypt_utils_status_t fscrypt_add_key(uint8_t fscrypt_key_id_out[FSCRYPT_K
     uint8_t *fscrypt_key = (uint8_t*)calloc(FSCRYPT_KEY_BYTES, 1);
     if (FSCRYPT_KEY_BYTES != get_fscrypt_key(fscrypt_key, known_user))
     {
-        fscrypt_utils_log(LOG_ERR, "error: Failed to get fscrypt key\n");
+        fscrypt_utils_log(LOG_ERR, "Failed to get fscrypt key\n");
         EXIT_FUNCTION(); return FSCRYPT_UTILS_STATUS_ERROR;
     }
 
     int fd = open(mountpoint, O_RDONLY | O_CLOEXEC);
     if (fd < 0)
     {
-        fscrypt_utils_log(LOG_ERR, "error: Failed to open mountpoint %s\n", mountpoint);
+        fscrypt_utils_log(LOG_ERR, "Failed to open mountpoint %s\n", mountpoint);
         EXIT_FUNCTION(); return FSCRYPT_UTILS_STATUS_ERROR;
     }
 
@@ -624,7 +648,7 @@ enum fscrypt_utils_status_t fscrypt_add_key(uint8_t fscrypt_key_id_out[FSCRYPT_K
     enum fscrypt_utils_status_t func_return_code = FSCRYPT_UTILS_STATUS_OK;
     if (rc != 0)
     {
-        fscrypt_utils_log(LOG_ERR, "error: Failed to add key errno=%d\n", errno);
+        fscrypt_utils_log(LOG_ERR, "Failed to add key errno=%d\n", errno);
         func_return_code = FSCRYPT_UTILS_STATUS_ERROR;
     }
     else if (fscrypt_key_id_out != NULL)
@@ -650,7 +674,7 @@ enum fscrypt_utils_status_t fscrypt_set_policy(const char *directory, struct use
     int fd = open(directory, O_RDONLY | O_CLOEXEC);
     if (fd < 0)
     {
-        fscrypt_utils_log(LOG_ERR, "error: Failed to open directory %s\n", directory);
+        fscrypt_utils_log(LOG_ERR, "Failed to open directory %s\n", directory);
         EXIT_FUNCTION(); return FSCRYPT_UTILS_STATUS_ERROR;
     }
 
@@ -666,7 +690,7 @@ enum fscrypt_utils_status_t fscrypt_set_policy(const char *directory, struct use
     close(fd);
     if (rc != 0)
     {
-        fscrypt_utils_log(LOG_ERR, "error: Failed to set policy errno=%d\n", errno);
+        fscrypt_utils_log(LOG_ERR, "Failed to set policy errno=%d\n", errno);
         EXIT_FUNCTION(); return FSCRYPT_UTILS_STATUS_ERROR;
     }
 
