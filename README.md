@@ -30,7 +30,7 @@ The only encryption ioctls implemented in this project are those strictly requir
 
 All logs are sent to syslog (`/var/log/syslog`) with ID `fscrypt_multiuser`.
 
-PAM module logging can be adjusted by adding the `loglevel=` parameter to the PAM configuration in `/usr/share/pam-configs` or `/etc/pam.d`. The minimum is `loglevel=0`, to disable logging. The maximum is `loglevel=7` to enable debug trace logging.
+PAM module logging can be adjusted by adding the `loglevel=` parameter to the PAM configuration in `/usr/share/pam-configs` or `/etc/pam.d`. Valid values for this option are defined by `syslog.h`; the maximum is `loglevel=7` to enable debug trace logging.
 
 ### PAM Module Options
 
