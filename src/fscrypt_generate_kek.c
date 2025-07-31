@@ -57,12 +57,30 @@ void get_password(const char *prompt, char *result, int hide_input)
 
 int main(int argc, char **argv)
 {
-    if (argc > 2)
+    int verbose = 0;
+    int help = 0;
+    char *username = NULL;
+    for (int arg_idx = 1; arg_idx < argc; arg_idx++)
     {
-        fprintf(stderr, "Too many arguments. Check fscrypt_generate_kek -h\n");
-        return 1;
+        if (0 == strcmp(argv[arg_idx], "-h") || 0 == strcmp(argv[arg_idx], "--help"))
+        {
+            help = 1;
+        }
+        else if ((0 == strcmp(argv[arg_idx], "-v")) || (0 == strcmp(argv[arg_idx], "--verbose")))
+        {
+            verbose = 1;
+        }
+        else if (username != NULL)
+        {
+            help = 1;
+            fprintf(stderr, "More than one username was provided!\n");
+        }
+        else
+        {
+            username = argv[arg_idx];
+        }
     }
-    if (argc == 2 && (0 == strcmp(argv[1], "-h") || 0 == strcmp(argv[1], "--help")))
+    if (help)
     {
         fprintf(stderr,
             "Build version: " BUILD_FULL_VERSION_STR "\n"
@@ -83,9 +101,9 @@ int main(int argc, char **argv)
     char user1[INPUT_MAX_LENGTH];
     char pw1[INPUT_MAX_LENGTH];
 
-    if (argc == 2)
+    if (username != NULL)
     {
-        strncpy(user1, argv[1], INPUT_MAX_LENGTH);
+        strncpy(user1, username, INPUT_MAX_LENGTH);
         user1[INPUT_MAX_LENGTH - 1] = '\0';
     }
     else
@@ -118,8 +136,15 @@ int main(int argc, char **argv)
         strcat(result_escapes, hexbyte);
     }
 
-    printf("hash_ascii = %s\n", result_ascii);
-    printf("hash_escaped = %s\n", result_escapes);
+    if (verbose)
+    {
+        printf("hash_ascii = %s\n", result_ascii);
+        printf("hash_escaped = %s\n", result_escapes);
+    }
+    else
+    {
+        printf("%s\n", result_ascii);
+    }
 
     return 0;
 }

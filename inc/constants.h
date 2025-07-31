@@ -28,8 +28,6 @@ limitations under the License.
 
 #define FSCRYPT_UTILS_SYSLOG_ID "fscrypt_multiuser"
 
-#define FSCRYPT_DEFAULT_DATA_PATH "/.fscrypt_multiuser_data"
-
 #define fscrypt_util_min(a, b) ((a) < (b) ? (a) : (b))
 #define fscrypt_util_max(a, b) ((a) > (b) ? (a) : (b))
 

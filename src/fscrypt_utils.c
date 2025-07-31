@@ -38,12 +38,14 @@ limitations under the License.
 #define DATA_FILE_SOR_LENGTH (4)
 #define USER_ID_BYTES (MAX_USERNAME_BYTES)
 
-#define ENTER_FUNCTION() fscrypt_utils_log(LOG_DEBUG, "Enter %s\n", __func__)
-#define EXIT_FUNCTION() fscrypt_utils_log(LOG_DEBUG, "Exit %s on line %d\n", __func__, __LINE__)
+static int g_function_nest_depth = 0;
+#define ENTER_FUNCTION() fscrypt_utils_log(LOG_DEBUG, "%.*sEnter %s\n", g_function_nest_depth++, "                        ", __func__)
+#define EXIT_FUNCTION() fscrypt_utils_log(LOG_DEBUG, "%.*sExit %s on line %d\n", --g_function_nest_depth, "                        ", __func__, __LINE__)
 
-char g_stored_data_path[PATH_MAX] = FSCRYPT_DEFAULT_DATA_PATH;
 const char GLOBAL_DATA_LOCK[] = BUILD_RUNSTATEDIR "/fscrypt-multiuser.lock";
 
+struct fscrypt_util_config_t *g_config = NULL;
+char *g_conf_buffer = NULL;
 
 struct stored_user_data_t {
     uint8_t start_of_record[DATA_FILE_SOR_LENGTH];
@@ -71,18 +73,53 @@ void secure_free(void *ptr, size_t size)
 }
 
 // Returns number of bytes decoded (expect FSCRYPT_KEY_BYTES on success)
-size_t get_fscrypt_key(uint8_t fscrypt_key_out[FSCRYPT_KEY_BYTES], struct user_key_data_t *user_data);
+size_t get_fscrypt_key(uint8_t fscrypt_key_out[FSCRYPT_KEY_BYTES], struct user_key_data_t *user_data, const char *cryptdata_path);
 void get_user_identifier(uint8_t result[USER_ID_BYTES], struct user_key_data_t *user_data);
-struct stored_crypto_data_t *read_stored_data(void);
+struct stored_crypto_data_t *read_stored_data(const char *cryptdata_path);
 struct stored_user_data_t *locate_matching_user(struct stored_crypto_data_t *buffer, struct user_key_data_t *user_data);
 int openssl_print_error(const char *str, size_t len, void *userdata);
 
 enum fscrypt_utils_status_t lock_unlock_data_file(int lock);
 
 
-enum fscrypt_utils_status_t fscrypt_utils_string_to_bytes(unsigned char *outbuf, char *in_string)
+char *fscrypt_utils_trim(char *str);
+
+char *fscrypt_utils_trim(char *str)
 {
-    for (size_t idx = 0; idx < strlen(in_string); idx += 2)
+    if (str == NULL)
+    {
+        return str;
+    }
+    while (strlen(str) && (str[0] == ' ' || str[0] == '\n' || str[0] == '\t'))
+    {
+        str++;
+    }
+    while (strlen(str) && (
+        str[strlen(str)-1] == ' ' ||
+        str[strlen(str)-1] == '\n' ||
+        str[strlen(str)-1] == '\t')
+    )
+    {
+        str[strlen(str)-1] = '\0';
+    }
+    return str;
+}
+
+size_t fscrypt_utils_string_to_bytes(unsigned char *outbuf, size_t bufsize, const char *in_string)
+{
+    size_t inlength = strlen(in_string);
+    if (bufsize < inlength / 2)
+    {
+        fscrypt_utils_log(LOG_ERR, "in_string too large for output buffer. Length=%lu, bufsize=%lu\n", inlength, bufsize);
+        return 0;
+    }
+    if (inlength % 2 != 0)
+    {
+        fscrypt_utils_log(LOG_ERR, "in_string has an odd number of characters\n", in_string);
+        return 0;
+    }
+    size_t result_size = 0;
+    for (size_t idx = 0; idx < inlength; idx += 2)
     {
         char nextdata[3] = "\0";
         memcpy(nextdata, &in_string[idx], 2);
@@ -92,42 +129,220 @@ enum fscrypt_utils_status_t fscrypt_utils_string_to_bytes(unsigned char *outbuf,
         long next_byte = strtol(nextdata, &endptr, 16);
         if (*endptr != '\0')
         {
-            fscrypt_utils_log(LOG_ERR, "%s is not a valid hexidecimal number\n", in_string);
-            return FSCRYPT_UTILS_STATUS_ERROR;
+            fscrypt_utils_log(LOG_ERR, "'%s' is not a valid hexidecimal number\n", nextdata);
+            return 0;
         }
         outbuf[idx / 2] = next_byte & 0xff;
+        result_size++;
+
     }
-    return FSCRYPT_UTILS_STATUS_OK;
+    return result_size;
 }
 
-char* fscrypt_utils_bytes_to_string(unsigned char *inbuf, size_t insize)
+// char* fscrypt_utils_bytes_to_string(unsigned char *inbuf, size_t insize)
+// {
+//     char *result = (char*)calloc(insize * 2 + 1, 1);
+//     for (size_t idx = 0; idx < insize; idx++)
+//     {
+//         char this_byte[3] = "";
+//         snprintf(this_byte, 3, "%02x", inbuf[idx]);
+//         strcat(result, this_byte);
+//     }
+//     return result;
+// }
+
+
+struct fscrypt_util_config_t *fscrypt_utils_load_config(void)
 {
-    char *result = (char*)calloc(insize * 2 + 1, 1);
-    for (size_t idx = 0; idx < insize; idx++)
+    ENTER_FUNCTION();
+
+    if (g_config != NULL)
     {
-        char this_byte[3] = "";
-        snprintf(this_byte, 3, "%02x", inbuf[idx]);
-        strcat(result, this_byte);
+        EXIT_FUNCTION(); return g_config;
     }
-    return result;
-}
-
-char *fscrypt_util_stored_data_get_path(void)
-{
-    return g_stored_data_path;
-}
-
-enum fscrypt_utils_status_t fscrypt_util_stored_data_set_path(const char* new_path)
-{
-    if (strlen(new_path) >= sizeof(g_stored_data_path))
+    if (g_conf_buffer != NULL)
     {
-        fscrypt_utils_log(LOG_ERR, "fscrypt_util_stored_data_set_path requested path is too long\n");
-        return FSCRYPT_UTILS_STATUS_ERROR;
+        free(g_conf_buffer);
+        g_conf_buffer = NULL;
     }
-    memset(g_stored_data_path, 0, sizeof(g_stored_data_path));
-    strncpy(g_stored_data_path, new_path, sizeof(g_stored_data_path) - 1);
-    return FSCRYPT_UTILS_STATUS_OK;
+
+    char *config_path = getenv("FSCRYPT_SET_CONFIG_PATH");
+    if (config_path == NULL)
+    {
+        config_path = BUILD_CONFIG_PATH;
+        fscrypt_utils_log(LOG_DEBUG, "Using default config path=%s\n", config_path);
+    }
+    else
+    {
+        fscrypt_utils_log(LOG_INFO, "Overriding default config with FSCRYPT_SET_CONFIG_PATH=%s\n", config_path);
+    }
+
+    FILE *fd = fopen(config_path, "r");
+    if (fd == NULL)
+    {
+        fscrypt_utils_log(LOG_WARNING, "File does not exist, or is not readable: %s\n", config_path);
+    }
+    else
+    {
+        struct stat filestat;
+        if (0 != fstat(fileno(fd), &filestat))
+        {
+            fscrypt_utils_log(LOG_ERR, "Failed to get file info for %s\n", config_path);
+            fclose(fd);
+            EXIT_FUNCTION(); return NULL;
+        }
+        size_t file_size = filestat.st_size;
+        g_conf_buffer = (char*)calloc(file_size + 1, 1);
+
+        size_t read_size = fread(g_conf_buffer, 1, file_size, fd);
+        fclose(fd);
+        if (read_size != file_size)
+        {
+            fscrypt_utils_log(LOG_WARNING, "Failed to read config: %s, size=%lu, read=%lu\n", config_path, file_size, read_size);
+            free(g_conf_buffer);
+            g_conf_buffer = NULL;
+            EXIT_FUNCTION(); return NULL;
+        }
+    }
+
+    // Allocate config structure and set defaults.
+    // Use calloc so no need to specify default fields which would be 0 or NULL.
+    g_config = (struct fscrypt_util_config_t*)calloc(sizeof(struct fscrypt_util_config_t), 1);
+#ifdef DEBUG_BUILD
+    g_config->loglevel = LOG_INFO;
+#else
+    g_config->loglevel = LOG_WARNING;
+#endif
+
+    // If the config file doesn't exist, return the defaults
+    if (g_conf_buffer == NULL)
+    {
+        EXIT_FUNCTION(); return g_config;
+    }
+
+    int is_error = 0;
+
+    char *lineptr = NULL;
+    char *next_line = strtok_r(g_conf_buffer, "\n", &lineptr);
+    while (next_line != NULL)
+    {
+        fscrypt_utils_log(LOG_DEBUG, "Read config, next_line=%s\n", next_line);
+        char *value = NULL;
+        char *key = strtok_r(next_line, "=", &value);
+        value = fscrypt_utils_trim(value);
+        key = fscrypt_utils_trim(key);
+        fscrypt_utils_log(LOG_DEBUG, "Read config, key/value: '%s' = '%s'\n", key ? key : "(NULL)", value ? value : "(NULL)");
+
+        if (value != NULL && key != NULL && key[0] != '#')
+        {
+            if (strlen(key) == 0 || strlen(value) == 0)
+            {
+                fscrypt_utils_log(LOG_ERR, "%s Zero length key or value in config: '%s'\n", BUILD_CONFIG_PATH, next_line);
+                is_error = 1;
+            }
+            else if (strcmp(key, "loglevel") == 0)
+            {
+                char *endptr = NULL;
+                g_config->loglevel = strtol(value, &endptr, 0);
+                if (*endptr != '\0')
+                {
+                    fscrypt_utils_log(LOG_ERR, "%s Invalid value for loglevel: '%s'\n", BUILD_CONFIG_PATH, value);
+                    is_error = 1;
+                }
+            }
+            else if (strcmp(key, "mountpoint") == 0)
+            {
+                char *datafile = NULL;
+                char *mountpoint = strtok_r(value, ":", &datafile);
+                if (datafile == NULL || mountpoint == NULL)
+                {
+                    fscrypt_utils_log(LOG_ERR, "%s Invalid value for mountpoint: '%s'\n", BUILD_CONFIG_PATH, value);
+                    is_error = 1;
+                }
+                else
+                {
+                    if (access(datafile, F_OK) == -1)
+                    {
+                        fscrypt_utils_log(LOG_NOTICE, "%s datafile does not exist: %s\n", BUILD_CONFIG_PATH, datafile);
+                    }
+                    if (access(mountpoint, F_OK) == -1)
+                    {
+                        fscrypt_utils_log(LOG_WARNING, "%s mountpoint does not exist: %s\n", BUILD_CONFIG_PATH, mountpoint);
+                    }
+                    if (g_config->mountpoint_count >= FSCRYPT_UTILS_MAX_MOUNTPOINTS)
+                    {
+                        fscrypt_utils_log(LOG_WARNING, "%s mountpoint count exceeds maximum of %d\n", BUILD_CONFIG_PATH, FSCRYPT_UTILS_MAX_MOUNTPOINTS);
+                    }
+                    else
+                    {
+                        g_config->mountpoints[g_config->mountpoint_count] = mountpoint;
+                        g_config->datafiles[g_config->mountpoint_count] = datafile;
+                        g_config->mountpoint_count++;
+                    }
+                }
+            }
+            else if (strcmp(key, "pam_post_hook_exec") == 0)
+            {
+                g_config->pam_post_hook_exec = value;
+            }
+            else if (strcmp(key, "pam_post_hook_arg") == 0)
+            {
+                g_config->pam_post_hook_arg = value;
+            }
+            else
+            {
+                fscrypt_utils_log(LOG_WARNING, "%s Invalid key = %s\n", BUILD_CONFIG_PATH, key);
+            }
+        }
+        else
+        {
+            fscrypt_utils_log(LOG_DEBUG, "%s Skipping line: %s\n", BUILD_CONFIG_PATH, next_line);
+        }
+
+        next_line = strtok_r(NULL, "\n", &lineptr);
+    }
+
+    if (is_error)
+    {
+        fscrypt_utils_log(LOG_ERR, "%s configuration errors\n", BUILD_CONFIG_PATH);
+        free(g_config);
+        g_config = NULL;
+        free(g_conf_buffer);
+        g_conf_buffer = NULL;
+    }
+
+    EXIT_FUNCTION(); return g_config;
 }
+
+
+const char *fscrypt_utils_get_cryptdata_path(const char *mountpoint)
+{
+    ENTER_FUNCTION();
+    struct fscrypt_util_config_t *config = fscrypt_utils_load_config();
+    if (config == NULL)
+    {
+        EXIT_FUNCTION(); return NULL;
+    }
+    size_t match_length = 0;
+    const char *result = NULL;
+    for (size_t idx = 0; idx < config->mountpoint_count; idx++)
+    {
+        // Try to find a mountpoint that matches the requested directory.
+        // If there are multiple matches (i.e. nested mountpoints), the longest will be correct.
+        const char *match_pos = strstr(mountpoint, config->mountpoints[idx]);
+        if (match_pos == mountpoint && strlen(config->mountpoints[idx]) > match_length)
+        {
+            result = config->datafiles[idx];
+            match_length = strlen(config->mountpoints[idx]);
+        }
+    }
+    if (result == NULL)
+    {
+        fscrypt_utils_log(LOG_NOTICE, "Configuration does not have an entry for target %s\n", mountpoint);
+    }
+    EXIT_FUNCTION(); return result;
+}
+
 
 enum fscrypt_utils_status_t lock_unlock_data_file(int lock)
 {
@@ -367,7 +582,7 @@ void get_user_identifier(uint8_t result[USER_ID_BYTES], struct user_key_data_t *
 }
 
 
-enum fscrypt_utils_status_t wrap_fscrypt_key(struct user_key_data_t *known_user, struct user_key_data_t *new_user, enum wrap_key_mode_t mode)
+enum fscrypt_utils_status_t wrap_fscrypt_key(struct user_key_data_t *known_user, struct user_key_data_t *new_user, enum wrap_key_mode_t mode, const char *cryptdata_path)
 {
     ENTER_FUNCTION();
     uint8_t *fscrypt_key = (uint8_t*)calloc(FSCRYPT_KEY_BYTES, 1);
@@ -388,7 +603,7 @@ enum fscrypt_utils_status_t wrap_fscrypt_key(struct user_key_data_t *known_user,
     }
     else
     {
-        if (FSCRYPT_KEY_BYTES != get_fscrypt_key(fscrypt_key, known_user))
+        if (FSCRYPT_KEY_BYTES != get_fscrypt_key(fscrypt_key, known_user, cryptdata_path))
         {
             secure_free(&fscrypt_key, FSCRYPT_KEY_BYTES);
             EXIT_FUNCTION(); return FSCRYPT_UTILS_STATUS_ERROR;
@@ -424,14 +639,14 @@ enum fscrypt_utils_status_t wrap_fscrypt_key(struct user_key_data_t *known_user,
             }
             break;
         case KEY_MODE_REPLACE_USER:
-            data_buffer = read_stored_data();
+            data_buffer = read_stored_data(cryptdata_path);
             if (data_buffer != NULL)
             {
                 entry_buffer = locate_matching_user(data_buffer, known_user);
             }
             break;
         case KEY_MODE_APPEND_USER:
-            data_buffer = read_stored_data();
+            data_buffer = read_stored_data(cryptdata_path);
             if (data_buffer != NULL)
             {
                 if (NULL != locate_matching_user(data_buffer, new_user))
@@ -466,9 +681,9 @@ enum fscrypt_utils_status_t wrap_fscrypt_key(struct user_key_data_t *known_user,
 
     secure_free(&context, sizeof(*context));
 
-    FILE *fd = fopen(fscrypt_util_stored_data_get_path(), "w");
+    FILE *fd = fopen(cryptdata_path, "w");
     if (fd == NULL) {
-        fscrypt_utils_log(LOG_ERR, "Failed to open for writing %s\n", fscrypt_util_stored_data_get_path());
+        fscrypt_utils_log(LOG_ERR, "Failed to open for writing %s\n", cryptdata_path);
         lock_unlock_data_file(0);
         EXIT_FUNCTION(); return FSCRYPT_UTILS_STATUS_ERROR;
     }
@@ -490,19 +705,20 @@ enum fscrypt_utils_status_t wrap_fscrypt_key(struct user_key_data_t *known_user,
 }
 
 
-struct stored_crypto_data_t *read_stored_data(void)
+struct stored_crypto_data_t *read_stored_data(const char *cryptdata_path)
 {
     ENTER_FUNCTION();
-    FILE *fd = fopen(fscrypt_util_stored_data_get_path(), "r");
+    fscrypt_utils_log(LOG_DEBUG, "Reading data from %s\n", cryptdata_path);
+    FILE *fd = fopen(cryptdata_path, "r");
     if (fd == NULL) {
-        fscrypt_utils_log(LOG_ERR, "Failed to open %s\n", fscrypt_util_stored_data_get_path());
+        fscrypt_utils_log(LOG_ERR, "Failed to open %s\n", cryptdata_path);
         EXIT_FUNCTION(); return NULL;
     }
 
     struct stat filestat;
     if (0 != fstat(fileno(fd), &filestat))
     {
-        fscrypt_utils_log(LOG_ERR, "Failed to get stat for %s\n", fscrypt_util_stored_data_get_path());
+        fscrypt_utils_log(LOG_ERR, "Failed to get stat for %s\n", cryptdata_path);
         fclose(fd);
         EXIT_FUNCTION(); return NULL;
     }
@@ -562,7 +778,7 @@ struct stored_user_data_t *locate_matching_user(struct stored_crypto_data_t *buf
         struct stored_user_data_t *current_entry = &buffer->data[buf_idx];
         if (memcmp(current_entry->start_of_record, DATA_FILE_SOR_VALUE, DATA_FILE_SOR_LENGTH) != 0)
         {
-            fscrypt_utils_log(LOG_ERR, "failed to find Start of Record in %s at offset=%lu\n", fscrypt_util_stored_data_get_path(), buf_idx);
+            fscrypt_utils_log(LOG_ERR, "failed to find Start of Record at offset=%lu\n", buf_idx);
             break;
         }
         if (0 == memcmp(current_entry->identifier, user_id, USER_ID_BYTES))
@@ -580,7 +796,7 @@ struct stored_user_data_t *locate_matching_user(struct stored_crypto_data_t *buf
 }
 
 
-size_t get_fscrypt_key(uint8_t fscrypt_key_out[FSCRYPT_KEY_BYTES], struct user_key_data_t *user_data)
+size_t get_fscrypt_key(uint8_t fscrypt_key_out[FSCRYPT_KEY_BYTES], struct user_key_data_t *user_data, const char *cryptdata_path)
 {
     ENTER_FUNCTION();
     if (FSCRYPT_UTILS_STATUS_OK != lock_unlock_data_file(1))
@@ -588,7 +804,7 @@ size_t get_fscrypt_key(uint8_t fscrypt_key_out[FSCRYPT_KEY_BYTES], struct user_k
         EXIT_FUNCTION(); return 0;
     }
 
-    struct stored_crypto_data_t *data_buffer = read_stored_data();
+    struct stored_crypto_data_t *data_buffer = read_stored_data(cryptdata_path);
     lock_unlock_data_file(0);
     if (data_buffer == NULL)
     {
@@ -620,8 +836,14 @@ size_t get_fscrypt_key(uint8_t fscrypt_key_out[FSCRYPT_KEY_BYTES], struct user_k
 enum fscrypt_utils_status_t fscrypt_add_key(uint8_t fscrypt_key_id_out[FSCRYPT_KEY_ID_BYTES], const char *mountpoint, struct user_key_data_t *known_user)
 {
     ENTER_FUNCTION();
+    const char *cryptdata_path = fscrypt_utils_get_cryptdata_path(mountpoint);
+    if (cryptdata_path == NULL)
+    {
+        fscrypt_utils_log(LOG_ERR, "Failed to locate corresponding data file for mount point '%s'\n", mountpoint);
+        EXIT_FUNCTION(); return FSCRYPT_UTILS_STATUS_ERROR;
+    }
     uint8_t *fscrypt_key = (uint8_t*)calloc(FSCRYPT_KEY_BYTES, 1);
-    if (FSCRYPT_KEY_BYTES != get_fscrypt_key(fscrypt_key, known_user))
+    if (FSCRYPT_KEY_BYTES != get_fscrypt_key(fscrypt_key, known_user, cryptdata_path))
     {
         fscrypt_utils_log(LOG_ERR, "Failed to get fscrypt key\n");
         EXIT_FUNCTION(); return FSCRYPT_UTILS_STATUS_ERROR;

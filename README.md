@@ -20,7 +20,15 @@ This project attempts to address the above issues by focusing on the following d
 
 ## Usage
 
-TODO
+### Included Files/Tools
+
+The following files can be included in a typical installation:
+
+- `fscrypt_setup` : Command line interface for managing the fscrypt-multiuser data container and enabling local encryption policies.
+- `fscrypt_generate_kek` : Simple executable for generating KEKs from a user's login credentials.
+- `pam_fscrypt_multiuser.so` : PAM integration for unlocking system resources at login.
+- `fscrypt-multiuser-rule` : Configuration for debian-style PAM setup.
+- `fscrypt_pam_subprocess_hook.so`, `fscrypt_pam_hook.h` : See [PAM hooks](#pam-hooks).
 
 ### Verifying Encryption Policies
 
@@ -65,7 +73,9 @@ HOOKPARAM_PASSWORD=password_xyz
 HOOKPARAM_USER_KEK_DATA=aabbcc001122
 ```
 
-## Dependencies
+## Build and Install
+
+### Dependencies
 This project is built using cmake.
 
 Build dependencies are the PAM and openssl development headers.
@@ -75,7 +85,8 @@ For ubuntu:
 sudo apt install cmake libpam0g-dev libssl-dev
 ```
 
-## Build and Install
+### Build Process
+
 ```
 mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release -DINSTALL_HEADERS=OFF
