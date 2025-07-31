@@ -8,7 +8,7 @@ In brief, this is a tool for IT automation in shared lab environments where you 
 
 Similar projects like [google/fscrypt](https://github.com/google/fscrypt) are generally designed with the assumption that encrypted resources belong to a particular user and that these resources are exclusive to that user. While it is possible to add multiple protectors to a single policy in fscrypt (and thus, assign protectors to multiple users), doing so is cumbersome and difficult to automate because of the tool's focus on single-user usage.
 
-The other principal issue with fscrypt is that unix/PAM auth integration accepts the user's password directly as a key encrypting key (KEK) for the filesystem's primary key. In a shared lab environment, it is not feasible for a user to enter their password to set up every PC. And at the same time, IT administrators cannot be asking for and distributing plaintext user passwords. In a corporate environment, that password may authenticate against a unified access control service, and revealing it could grant access to much more than just a lab PC. 
+The other principal issue with fscrypt is that unix/PAM auth integration accepts the user's password directly as a key encrypting key (KEK) for the filesystem's primary key. In a shared lab environment, it is not feasible for a user to enter their password to set up every PC. And at the same time, IT administrators cannot be asking for and distributing plaintext user passwords. In a corporate environment, that password may authenticate against a unified access control service, and revealing it could grant access to much more than just a lab PC.
 
 [google/fscryptctl](https://github.com/google/fscryptctl) is a related project which provides more direct access to linux's filesystem encryption API. Since fscryptctl does not directly implement any PAM modules or key wrapping, it does not fully serve the same use cases as this project. However, it is useful for supplementing features so that we don't need to re-implmement every fs encryption interface. fscryptctl and fscrypt-multiuser manipulate the same underlying filesystem structures, so fscryptctl can be used to verify the policy and unlock status of encrypted directories.
 
@@ -40,16 +40,19 @@ All logs are sent to syslog (`/var/log/syslog`) with ID `fscrypt_multiuser`.
 
 PAM module logging can be adjusted by adding the `loglevel=` parameter to the PAM configuration in `/usr/share/pam-configs` or `/etc/pam.d`. Valid values for this option are defined by `syslog.h`; the maximum is `loglevel=7` to enable debug trace logging.
 
-### PAM Module Options
+### Configuration
 
-The following options are available to append to the `pam_fscrypt_multiuser.so` line in the PAM configuration files. All parameters should be specified in the format `option=value`. For example, `loglevel=7`.
+The default configuration is `/etc/fscrypt_multiuser.conf`. For testing and development, this path can be overwritten by using the environment variable `FSCRYPT_SET_CONFIG_PATH`.
 
-| Configuration | Option | Valid Values | Description |
-| - | - | - | - |
-| Auth, Password | `loglevel` | Numeric 0-7 | Set logging level, see: [Logging](#logging) |
-| Auth | `mount` | Path | Specify a mountpoint path to unlock. This option can be specified multiple times. If not set, `/` is used. |
-| Auth | `post-hook` | shared_object.so | Specify a hook to run after attempting an unlock. See [PAM Hooks](#pam-hooks) |
-| Auth | `hook-arg` | arbitrary | Specify an additional argument to pass to the post-hook object |
+The file is a simple list of parameters taking the form of one `key=value` pair per line. Where specified, a key can be specified multiple times to supply multiple values.
+
+| Key | Valid Values | Description |
+| - | - | - |
+| loglevel | Numeric 0-7 | Set logging level, see: [Logging](#logging) |
+| mountpoint | `[mountpoint]::[datapath]` | Double colon-separated pair of a mountpoint and the path to a keystore for that mountpoint. Can be specified multiple times |
+| pam_post_hook_exec | shared_object.so | Specify a hook to run after attempting an unlock. See [PAM Hooks](#pam-hooks) |
+| pam_post_hook_arg | String | Specify an additional argument to pass to the post-hook object |
+
 
 ### PAM Hooks
 

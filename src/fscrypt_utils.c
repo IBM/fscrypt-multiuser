@@ -39,8 +39,8 @@ limitations under the License.
 #define USER_ID_BYTES (MAX_USERNAME_BYTES)
 
 static int g_function_nest_depth = 0;
-#define ENTER_FUNCTION() fscrypt_utils_log(LOG_DEBUG, "%.*sEnter %s\n", g_function_nest_depth++, "                        ", __func__)
-#define EXIT_FUNCTION() fscrypt_utils_log(LOG_DEBUG, "%.*sExit %s on line %d\n", --g_function_nest_depth, "                        ", __func__, __LINE__)
+#define ENTER_FUNCTION() fscrypt_utils_log(LOG_DEBUG, "%.*sEnter %s\n", g_function_nest_depth++, "------------------------", __func__)
+#define EXIT_FUNCTION() fscrypt_utils_log(LOG_DEBUG, "%.*sExit %s on line %d\n", --g_function_nest_depth, "------------------------", __func__, __LINE__)
 
 const char GLOBAL_DATA_LOCK[] = BUILD_RUNSTATEDIR "/fscrypt-multiuser.lock";
 
@@ -252,8 +252,10 @@ struct fscrypt_util_config_t *fscrypt_utils_load_config(void)
             }
             else if (strcmp(key, "mountpoint") == 0)
             {
-                char *datafile = NULL;
-                char *mountpoint = strtok_r(value, ":", &datafile);
+                const char delimiter[] = "::";
+                // "[mountpath][delimiter][datapath]"
+                char *mountpoint = value;
+                char *datafile = strstr(value, delimiter);
                 if (datafile == NULL || mountpoint == NULL)
                 {
                     fscrypt_utils_log(LOG_ERR, "%s Invalid value for mountpoint: '%s'\n", BUILD_CONFIG_PATH, value);
@@ -261,6 +263,9 @@ struct fscrypt_util_config_t *fscrypt_utils_load_config(void)
                 }
                 else
                 {
+                    *datafile = '\0';
+                    datafile += sizeof(delimiter) / sizeof(delimiter[0]) - 1;
+                    fscrypt_utils_log(LOG_DEBUG, "Parsed mountpoint='%s', datafile='%s'\n", mountpoint, datafile);
                     if (access(datafile, F_OK) == -1)
                     {
                         fscrypt_utils_log(LOG_NOTICE, "%s datafile does not exist: %s\n", BUILD_CONFIG_PATH, datafile);
@@ -418,7 +423,7 @@ enum fscrypt_utils_status_t lock_unlock_data_file(int lock)
                 fscrypt_utils_log(LOG_ERR, "%s Cannot unlock data file, locked by pid %d\n", lock_path, locked_pid);
                 continue;
             }
-        
+
             if (locked_pid == -1)
             {
                 fscrypt_utils_log(LOG_ERR, "%s Attempted to unlock data file when not locked\n", lock_path);
