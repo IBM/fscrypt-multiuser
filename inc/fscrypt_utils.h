@@ -22,6 +22,8 @@ limitations under the License.
 #include "constants.h"
 #include "hasher.h"
 
+#define FSCRYPT_UTILS_MAX_MOUNTPOINTS (64)
+
 struct crypto_context_t {
     uint8_t unlock_key[FSCRYPT_USER_KEK_BYTES];
     uint8_t iv[FSCRYPT_USER_KEK_BYTES];
@@ -30,6 +32,15 @@ struct crypto_context_t {
 struct user_key_data_t {
     uint8_t user_kek[FSCRYPT_USER_KEK_BYTES];
     char username[MAX_USERNAME_BYTES];
+};
+
+struct fscrypt_util_config_t {
+    int loglevel;
+    const char* mountpoints[FSCRYPT_UTILS_MAX_MOUNTPOINTS+1];  // +1 for null terminiation
+    const char* datafiles[FSCRYPT_UTILS_MAX_MOUNTPOINTS+1];
+    size_t mountpoint_count;
+    const char* pam_post_hook_exec;
+    const char* pam_post_hook_arg;
 };
 
 enum wrap_key_mode_t {
@@ -43,18 +54,19 @@ enum fscrypt_utils_status_t {
     FSCRYPT_UTILS_STATUS_ERROR = 1
 };
 
-char *fscrypt_util_stored_data_get_path(void);
-enum fscrypt_utils_status_t fscrypt_util_stored_data_set_path(const char* new_path);
 
-enum fscrypt_utils_status_t fscrypt_utils_string_to_bytes(unsigned char *outbuf, char *hash_string);
+struct fscrypt_util_config_t *fscrypt_utils_load_config(void);
+const char *fscrypt_utils_get_cryptdata_path(const char *mountpoint);
+
+size_t fscrypt_utils_string_to_bytes(unsigned char *outbuf, size_t bufsize, const char *in_string);
 // Result must be free()'d when done
-char* fscrypt_utils_bytes_to_string(unsigned char *inbuf, size_t insize);
+// char* fscrypt_utils_bytes_to_string(unsigned char *inbuf, size_t insize);
 
 void fscrypt_utils_log(int priority, const char *fmt, ...);
 void fscrypt_utils_set_log_stderr(int is_stderr_enabled);
 void fscrypt_utils_set_log_min_priority(int min_priority);
 
-enum fscrypt_utils_status_t wrap_fscrypt_key(struct user_key_data_t *known_user, struct user_key_data_t *new_user, enum wrap_key_mode_t mode);
+enum fscrypt_utils_status_t wrap_fscrypt_key(struct user_key_data_t *known_user, struct user_key_data_t *new_user, enum wrap_key_mode_t mode, const char *cryptdata_path);
 enum fscrypt_utils_status_t fscrypt_add_key(uint8_t fscrypt_key_id_out[FSCRYPT_KEY_ID_BYTES], const char *mountpoint, struct user_key_data_t *known_user);
 enum fscrypt_utils_status_t fscrypt_set_policy(const char *directory, struct user_key_data_t *known_user);
 

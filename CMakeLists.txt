@@ -5,7 +5,7 @@ set(C_STANDARD_REQUIRED ON)
 
 project(fscrypt_multiuser "C")
 
-set(fscrypt_multiuser_BUILDVERSION 1.0.0)
+set(fscrypt_multiuser_BUILDVERSION 1.0.1)
 
 option(PAM_RULE_INSTALL "install the ubuntu-specific rule in pam-configs" OFF)
 option(PAM_AUTH_FORCE_UPDATE "Run pam rules update after installing ubuntu-specific rule" OFF)
@@ -37,6 +37,7 @@ message("INSTALL_HEADERS = ${INSTALL_HEADERS}")
 message("CMAKE_INSTALL_PREFIX = ${CMAKE_INSTALL_PREFIX}")
 message("CMAKE_INSTALL_BINDIR = ${CMAKE_INSTALL_BINDIR}")
 message("CMAKE_INSTALL_LIBDIR = ${CMAKE_INSTALL_LIBDIR}")
+message("CMAKE_INSTALL_SYSCONFDIR = ${CMAKE_INSTALL_SYSCONFDIR}")
 message("CMAKE_INSTALL_INCLUDEDIR = ${CMAKE_INSTALL_INCLUDEDIR}")
 message("CMAKE_INSTALL_DATAROOTDIR = ${CMAKE_INSTALL_DATAROOTDIR}")
 message("CMAKE_INSTALL_RUNSTATEDIR = ${CMAKE_INSTALL_RUNSTATEDIR}")
@@ -44,6 +45,9 @@ message("CMAKE_INSTALL_PAMDIR = ${CMAKE_INSTALL_PAMDIR}")
 
 set(fscrypt_multiuser_LOCKSTATEDIR "/${CMAKE_INSTALL_RUNSTATEDIR}/lock")
 message("fscrypt_multiuser_LOCKSTATEDIR = ${fscrypt_multiuser_LOCKSTATEDIR}")
+
+set(fscrypt_multiuser_CONFIG_PATH "/${CMAKE_INSTALL_SYSCONFDIR}/fscrypt_multiuser.conf")
+message("fscrypt_multiuser_CONFIG_PATH = ${fscrypt_multiuser_CONFIG_PATH}")
 
 configure_file(
     "templates/BUILD_PARAMS.template"

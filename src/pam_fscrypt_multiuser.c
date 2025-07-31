@@ -49,119 +49,18 @@ struct pam_fscrypt_parameters {
     const char* hook_userarg;
 };
 
-void pam_fscrypt_parse_arguments(enum pam_fscrypt_source_func source, int argc, const char **argv, struct pam_fscrypt_parameters *result);
-
-
-void pam_fscrypt_parse_arguments(enum pam_fscrypt_source_func source, int argc, const char **argv, struct pam_fscrypt_parameters *result)
-{
-    const char* const DEFAULT_MOUNTPOINT = "/";
-
-    fscrypt_utils_set_log_stderr(0);
-    int default_loglevel;
-#ifdef DEBUG_BUILD
-    default_loglevel = 6;  // LOG_INFO
-#else
-    default_loglevel = 4;  // LOG_WARNING
-#endif
-    fscrypt_utils_set_log_min_priority(default_loglevel);
-
-    result->loglevel = default_loglevel;
-    result->system_mountpoints[0] = NULL;
-    result->system_mount_count = 0;
-    result->datapaths[0] = NULL;
-    result->datapath_count = 0;
-    result->post_hook = NULL;
-    result->hook_userarg = NULL;
-
-    for (int idx = 0; idx < argc; idx++)
-    {
-        fscrypt_utils_log(LOG_DEBUG, "argv[%d] = %s\n", idx, argv[idx]);
-        const char *value = strchr(argv[idx], '=');
-        if (value == NULL)
-        {
-            fscrypt_utils_log(LOG_WARNING, "Invalid paramter %s\n", argv[idx]);
-            continue;
-        }
-        value++;  // Increment past the '=' character
-
-        if ((source & SOURCE_FUNCTION_ALL) && argv[idx] == strstr(argv[idx], "loglevel="))
-        {
-            char *endptr = NULL;
-            long loglevel = strtol(value, &endptr, 0);
-            if (*endptr == '\0' && loglevel >= LOG_EMERG && loglevel <= LOG_DEBUG)
-            {
-                result->loglevel = (int)loglevel;
-                fscrypt_utils_set_log_min_priority(result->loglevel);
-                fscrypt_utils_log(LOG_NOTICE, "syslog level set to %d\n", result->loglevel);
-            }
-            else
-            {
-                fscrypt_utils_log(LOG_WARNING, "Invalid value for loglevel: %s\n", value);
-            }
-        }
-        else if ((source & SOURCE_FUNCTION_ALL) && argv[idx] == strstr(argv[idx], "data-path="))
-        {
-            if (result->datapath_count >= MAX_DATAFILES)
-            {
-                fscrypt_utils_log(LOG_ERR, "Exceeded max number of data paths. Ignoring %s\n", value);
-            }
-            else
-            {
-                result->datapaths[result->datapath_count] = value;
-                fscrypt_utils_log(LOG_NOTICE, "Using datapath[%d] = %s\n", result->datapath_count, value);
-                result->datapath_count++;
-            }
-        }
-        else if ((source & SOURCE_FUNCTION_AUTH) && argv[idx] == strstr(argv[idx], "post-hook="))
-        {
-            result->post_hook = value;
-            fscrypt_utils_log(LOG_NOTICE, "Using post-hook module %s\n", result->post_hook);
-        }
-        else if ((source & SOURCE_FUNCTION_AUTH) && argv[idx] == strstr(argv[idx], "hook-arg="))
-        {
-            result->hook_userarg = value;
-            fscrypt_utils_log(LOG_NOTICE, "Using hook parameter %s\n", result->hook_userarg);
-        }
-        else if ((source & SOURCE_FUNCTION_AUTH) && argv[idx] == strstr(argv[idx], "mount="))
-        {
-            if (result->system_mount_count >= MAX_MOUNTPOINTS)
-            {
-                fscrypt_utils_log(LOG_ERR, "Exceeded max number of mountpoints. Ignoring %s\n", value);
-            }
-            else
-            {
-                result->system_mountpoints[result->system_mount_count] = value;
-                fscrypt_utils_log(LOG_NOTICE, "Using mountpoint[%d] = %s\n", result->system_mount_count, value);
-                result->system_mount_count++;
-            }
-        }
-        else
-        {
-            fscrypt_utils_log(LOG_WARNING, "Got extra unused parameter: %s\n", argv[idx]);
-        }
-    }
-
-    if (result->system_mount_count == 0)
-    {
-        fscrypt_utils_log(LOG_NOTICE, "No mountpoints specified. Using default: %s\n", DEFAULT_MOUNTPOINT);
-        result->system_mountpoints[0] = DEFAULT_MOUNTPOINT;
-        result->system_mount_count = 1;
-    }
-
-    if (result->datapath_count == 0)
-    {
-        fscrypt_utils_log(LOG_NOTICE, "No datapaths specified. Using: %s\n", fscrypt_util_stored_data_get_path());
-    }
-
-    fscrypt_utils_log(LOG_INFO, "Build version %s\n", BUILD_FULL_VERSION_STR);
-}
 
 int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
-    struct pam_fscrypt_parameters args;
-    pam_fscrypt_parse_arguments(SOURCE_FUNCTION_AUTH, argc, argv, &args);
+    // struct pam_fscrypt_parameters args;
+    // pam_fscrypt_parse_arguments(SOURCE_FUNCTION_AUTH, argc, argv, &args);
+    struct fscrypt_util_config_t *config = fscrypt_utils_load_config();
 
     fscrypt_utils_log(LOG_DEBUG, "Starting pam_sm_authenticate flags=%d\n", flags);
+    for (size_t idx = 0; idx < (size_t)argc; idx++)
+    {
+        fscrypt_utils_log(LOG_DEBUG, "argv[%d] = %s\n", argv[argc]);
+    }
 
     // List of services which authenticate for non-login purposes.
     // It doesn't strictly hurt to add keys during these operations
@@ -222,40 +121,23 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
     strcpy(userdata.username, username);
 
     int successful_unlock_count = 0;
-    for (size_t mount_idx = 0; mount_idx < args.system_mount_count; mount_idx++)
+    for (size_t mount_idx = 0; mount_idx < config->mountpoint_count; mount_idx++)
     {
-        for (size_t datapath_idx = 0; datapath_idx < fscrypt_util_max(1, args.datapath_count); datapath_idx++)
+        if (FSCRYPT_UTILS_STATUS_OK != fscrypt_add_key(NULL, config->mountpoints[mount_idx], &userdata))
         {
-            if (args.datapaths[datapath_idx] != NULL)
-            {
-                if (FSCRYPT_UTILS_STATUS_OK != fscrypt_util_stored_data_set_path(args.datapaths[datapath_idx]))
-                {
-                    fscrypt_utils_log(LOG_ERR, "Failed to use datapath %s\n", args.datapaths[datapath_idx]);
-                    continue;
-                }
-            }
-            if (FSCRYPT_UTILS_STATUS_OK != fscrypt_add_key(NULL, args.system_mountpoints[mount_idx], &userdata))
-            {
-                fscrypt_utils_log(LOG_ERR,
-                    "Failed to add fscrypt key for user=%s mount=%s datapath=%s\n",
-                    username, args.system_mountpoints[mount_idx], fscrypt_util_stored_data_get_path()
-                );
-            }
-            else
-            {
-                successful_unlock_count++;
-                fscrypt_utils_log(LOG_NOTICE,
-                    "Successfully added key for user=%s mount=%s datapath=%s\n",
-                    username, args.system_mountpoints[mount_idx], fscrypt_util_stored_data_get_path()
-                );
-            }
+            fscrypt_utils_log(LOG_ERR, "Failed to add fscrypt key for user=%s mount=%s\n", username, config->mountpoints[mount_idx]);
+        }
+        else
+        {
+            successful_unlock_count++;
+            fscrypt_utils_log(LOG_NOTICE, "Successfully added key for user=%s mount=%s\n", username, config->mountpoints[mount_idx]);
         }
     }
 
-    if (args.post_hook != NULL)
+    if (config->pam_post_hook_arg != NULL)
     {
-        fscrypt_utils_log(LOG_DEBUG, "Starting post-hook execution %s\n", args.post_hook);
-        void *handle = dlopen(args.post_hook, RTLD_NOW);
+        fscrypt_utils_log(LOG_DEBUG, "Starting post-hook execution %s\n", config->pam_post_hook_exec);
+        void *handle = dlopen(config->pam_post_hook_exec, RTLD_NOW);
         if (handle == NULL)
         {
             fscrypt_utils_log(LOG_ERR, "%s\n", dlerror());
@@ -271,7 +153,7 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
             {
                 // v1 hook
                 struct hook_data_structure_t hook_params;
-                hook_params.userarg = args.hook_userarg;
+                hook_params.userarg = config->pam_post_hook_arg;
                 hook_params.unlock_ok_count = successful_unlock_count;
                 hook_params.username = username;
                 hook_params.password = password;
@@ -291,10 +173,11 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 
 int pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
-    struct pam_fscrypt_parameters args;
-    pam_fscrypt_parse_arguments(SOURCE_FUNCTION_PASSWORD, argc, argv, &args);
-
     fscrypt_utils_log(LOG_DEBUG, "Starting pam_sm_chauthtok flags=%d\n", flags);
+    for (size_t idx = 0; idx < (size_t)argc; idx++)
+    {
+        fscrypt_utils_log(LOG_DEBUG, "argv[%d] = %s\n", argv[argc]);
+    }
 
     if (!(flags & PAM_UPDATE_AUTHTOK))
     {
@@ -339,15 +222,32 @@ int pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv)
     strcpy(userdata_new.username, username);
 
     int rc;
-    if (FSCRYPT_UTILS_STATUS_OK != wrap_fscrypt_key(&userdata_old, &userdata_new, KEY_MODE_REPLACE_USER))
+    struct fscrypt_util_config_t *config = fscrypt_utils_load_config();
+    if (config == NULL)
     {
-        fscrypt_utils_log(LOG_ERR, "failed to rewrap user key during password change for %s\n", username);
-        rc = PAM_IGNORE;
+        fscrypt_utils_log(LOG_ERR, "pam_sm_chauthtok failed to read fscrypt-multiuser configuration\n");
+        return PAM_IGNORE;
     }
-    else
+    rc = PAM_SUCCESS;
+    for (size_t idx = 0; idx < config->mountpoint_count; idx++)
     {
-        fscrypt_utils_log(LOG_WARNING, "Successfully rewrapped key for user '%s'\n", username);
-        rc = PAM_SUCCESS;
+        for (size_t idx_nest = 0; idx_nest < idx; idx_nest++)
+        {
+            if (0 == strcmp(config->datafiles[idx], config->datafiles[idx_nest]))
+            {
+                fscrypt_utils_log(LOG_INFO, "pam_sm_chauthtok skipping updating %s, already updated\n", config->datafiles[idx]);
+                continue;
+            }
+        }
+        if (FSCRYPT_UTILS_STATUS_OK != wrap_fscrypt_key(&userdata_old, &userdata_new, KEY_MODE_REPLACE_USER, config->datafiles[idx]))
+        {
+            fscrypt_utils_log(LOG_ERR, "pam_sm_chauthtok failed to rewrap user key during password change for %s\n", username);
+            rc = PAM_IGNORE;
+        }
+        else
+        {
+            fscrypt_utils_log(LOG_WARNING, "pam_sm_chauthtok Successfully rewrapped key for user '%s'\n", username);
+        }
     }
 
     memset(&userdata_old, 0, sizeof(userdata_old));

@@ -13,5 +13,6 @@ Include "BUILD_PARAMS.h" for usage
 #define BUILD_TYPE "@CMAKE_BUILD_TYPE@"
 #define BUILD_FULL_VERSION_STR "@fscrypt_multiuser_BUILDVERSION@-@CMAKE_BUILD_TYPE@"
 #define BUILD_RUNSTATEDIR "@fscrypt_multiuser_LOCKSTATEDIR@"
+#define BUILD_CONFIG_PATH "@fscrypt_multiuser_CONFIG_PATH@"
 
 #endif  // __BUILDVERSION_H__
